@@ -60,6 +60,7 @@ curl -s "http://localhost:5173/api/tba/event-info?event_key=2026cc"
 
 | Problem | Fix |
 | --- | --- |
+| Every page says "Not connected to a database yet" | `.env` is missing or incomplete, or the schema is not applied. In development the page shows which. Fill in `.env` and restart the server |
 | Every page goes to `/setup` | Setup hasn't been finished yet. Finish it, or check `databaseError` above |
 | Setup says the token is wrong | It must match `SETUP_TOKEN` exactly. Restart the server after editing `.env` |
 | Sign-up says to check your email, but no email comes | Hosted Supabase's built-in email is rate limited; set up SMTP in Supabase, turn off "Confirm email" while developing, or add accounts in Scouting Admin > Add user |

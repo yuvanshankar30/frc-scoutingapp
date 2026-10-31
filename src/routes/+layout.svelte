@@ -11,6 +11,8 @@
   import { setTeam, team } from '$lib/stores/team.js';
   import { brandCssVars } from '$lib/app/teamSettings.js';
   import TeamMark from '$lib/components/common/TeamMark.svelte';
+  import { supabaseConfigured } from '$lib/app/supabaseConfig.js';
+  import { dev } from '$app/environment';
   import { activeEventKey, primeActiveEvent, refreshActiveEvent } from '$lib/stores/activeEvent.js';
   import { displayEventCode } from '$lib/scouting/eventCode.js';
   import ConfirmationDialog from '$lib/components/common/ConfirmationDialog.svelte';
@@ -92,6 +94,9 @@
 
   // The team's settings, read on the server for every full page load (+layout.server.js).
   export let data;
+  // The server could not read the team settings: no database configured yet, or the schema is missing.
+  $: setupProblem =
+    !supabaseConfigured || data?.settingsError ? data?.settingsError || 'Supabase is not configured' : '';
   $: setTeam(data?.team);
 
   // The brand color as CSS variables for both themes, in the page head so the first paint already has it.
@@ -239,7 +244,20 @@
   {#if brandStyle}{@html `<style>${brandStyle}</style>`}{/if}
 </svelte:head>
 
-{#if isLogin}
+{#if setupProblem}
+  <main class="not-connected">
+    <section>
+      <h1>Not connected to a database yet</h1>
+      <p>
+        The server can't read its settings. Set <code>PUBLIC_SUPABASE_URL</code>, <code>PUBLIC_SUPABASE_ANON_KEY</code>
+        and
+        <code>SUPABASE_SERVICE_KEY</code> in <code>.env</code>, apply the schema in <code>supabase/migrations</code>,
+        and restart the server. The README's Quick start has every step.
+      </p>
+      {#if dev}<p class="detail"><b>Details:</b> {setupProblem}</p>{/if}
+    </section>
+  </main>
+{:else if isLogin}
   <slot />
 {:else if !$authReady || !$user}
   <div class="boot" role="status">Loading {appName}...</div>
@@ -384,6 +402,36 @@
 <ConfirmationDialog />
 
 <style>
+  .not-connected {
+    min-height: calc(100 * var(--vh));
+    display: grid;
+    place-items: center;
+    padding: var(--space-5);
+    background: var(--background);
+    color: var(--text);
+  }
+  .not-connected section {
+    width: min(38rem, 100%);
+    padding: var(--space-5);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .not-connected h1 {
+    margin: 0 0 var(--space-3);
+    font-size: 1.5rem;
+  }
+  .not-connected p {
+    margin: 0;
+    line-height: 1.55;
+    color: var(--text-secondary);
+  }
+  .not-connected .detail {
+    margin-top: var(--space-3);
+    font-family: var(--font-mono-stack);
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+  }
   .boot {
     display: grid;
     place-items: center;

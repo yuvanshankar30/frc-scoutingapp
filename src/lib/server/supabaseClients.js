@@ -2,13 +2,13 @@
 // clients here, so the "act as the caller (RLS) vs act as the server (service role)" rule
 // lives in one place.
 import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+import { supabaseAnonKey, supabaseUrl } from '$lib/app/supabaseConfig.js';
 import { getSupabase } from '$lib/server/serviceClient.js';
 
 /** A client that acts as the caller: it sends their bearer token, so row-level security applies. */
 export function clientFromRequest(request) {
   const auth = request?.headers?.get('authorization') || '';
-  return createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, { global: { headers: { Authorization: auth } } });
+  return createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: auth } } });
 }
 
 /** The service client when the server has one, otherwise `fallback` (usually the caller's own client). */
