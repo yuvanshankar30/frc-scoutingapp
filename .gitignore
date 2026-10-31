@@ -1,0 +1,15 @@
+node_modules
+/.svelte-kit
+/build
+*.log
+.DS_Store
+.vscode/
+.vercel
+.claude
+supabase/.temp
+supabase/.branches
+
+# Secrets: never commit an environment file. The example is the only one tracked.
+.env
+.env.*
+!.env.example

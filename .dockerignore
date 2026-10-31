@@ -1,0 +1,17 @@
+# Never let a local .env leak into the build context.
+.env
+.env.*
+!.env.example
+
+node_modules
+.svelte-kit
+build
+.git
+.github
+.vscode
+.vercel
+.claude
+
+# Not needed inside the image
+*.md
+supabase

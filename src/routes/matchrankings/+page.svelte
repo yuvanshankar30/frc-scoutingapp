@@ -1,0 +1,550 @@
+<script>
+  // Phones show one screen at a time: the match list, or one match's ranking.
+  let phoneScreen = 'list';
+  import { onMount } from 'svelte';
+  import { ArrowDown, ArrowUp, Check, ListOrdered, Plus, RefreshCw, X, ArrowLeft } from 'lucide-svelte';
+  import { isPhone } from '$lib/stores/device.js';
+  import { fetchActiveScoutingEventKey } from '$lib/scouting/scoutingEvent.js';
+  import { getAuthHeader } from '$lib/app/supabase.js';
+  import { fetchWithCache } from '$lib/app/offlineCache.js';
+
+  let eventKey = '';
+  let matches = [];
+  let rosterByKey = new Map();
+  let rankings = [];
+  let selectedMatchKey = '';
+  let rankedKeys = [];
+  let loading = true;
+  let saving = false;
+  let addingPractice = false;
+  let teamInput = '';
+  let error = '';
+  let message = '';
+  let unavailable = false;
+
+  function normalizeTeamKey(value) {
+    const digits = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/^frc/, '');
+    return /^\d{1,5}$/.test(digits) ? `frc${digits}` : null;
+  }
+
+  $: selectedMatch = matches.find((match) => match.key === selectedMatchKey) || null;
+  $: rankedCount = rankings.length;
+  $: selectedRanking = rankings.find((ranking) => ranking.match_key === selectedMatchKey) || null;
+  $: unrankedMatches = matches.filter((match) => !rankings.some((ranking) => ranking.match_key === match.key)).length;
+
+  function matchLabel(match) {
+    if (match?.manual_label) return match.manual_label;
+    const level = String(match?.comp_level || 'qm').toUpperCase();
+    if (level === 'QM') return `Qualification ${match?.match_number ?? ''}`.trim();
+    return `${level} ${match?.set_number || ''}-${match?.match_number || ''}`.trim();
+  }
+
+  function teamsForMatch(match) {
+    return [...(match?.alliances?.red?.team_keys || []), ...(match?.alliances?.blue?.team_keys || [])].filter(Boolean);
+  }
+
+  function isPlayed(match) {
+    return Boolean(match?.practice || match?.actual_time || match?.post_result_time || match?.score_breakdown);
+  }
+
+  function teamLabel(key) {
+    const team = rosterByKey.get(key);
+    const number = Number(String(key || '').replace(/^frc/i, ''));
+    return `#${Number.isFinite(number) ? number : key}${team?.nickname ? ` ${team.nickname}` : ''}`;
+  }
+
+  function selectMatch(matchKey) {
+    selectedMatchKey = matchKey;
+    const match = matches.find((item) => item.key === matchKey);
+    const saved = rankings.find((item) => item.match_key === matchKey);
+    rankedKeys = saved?.ranked_team_keys?.length ? [...saved.ranked_team_keys] : teamsForMatch(match);
+    message = '';
+  }
+
+  function move(index, delta) {
+    const target = index + delta;
+    if (target < 0 || target >= rankedKeys.length) return;
+    const next = [...rankedKeys];
+    [next[index], next[target]] = [next[target], next[index]];
+    rankedKeys = next;
+    message = '';
+  }
+
+  function addTeamToRanking() {
+    const key = normalizeTeamKey(teamInput);
+    if (!key) return;
+    if (!rankedKeys.includes(key)) rankedKeys = [...rankedKeys, key];
+    teamInput = '';
+    message = '';
+  }
+
+  function removeTeamFromRanking(key) {
+    rankedKeys = rankedKeys.filter((item) => item !== key);
+    message = '';
+  }
+
+  async function load() {
+    if (!eventKey) return;
+    loading = true;
+    error = '';
+    const authHeaders = await getAuthHeader();
+    // Schedule and roster barely change mid-event - cached, so a slow link
+    // doesn't delay showing the rankings board.
+    const [matchesResult, rosterResult, rankingsResult, practiceResult] = await Promise.all([
+      fetchWithCache(`/api/tba/event-matches?event_key=${encodeURIComponent(eventKey)}&comp_level=all`, {
+        cacheKey: `event-matches:${eventKey}:all`
+      }).catch(() => null),
+      fetchWithCache(`/api/tba/event-teams?event_key=${encodeURIComponent(eventKey)}`, {
+        cacheKey: `event-teams:${eventKey}`
+      }).catch(() => null),
+      fetch(`/api/scouting-match-rankings?event_key=${encodeURIComponent(eventKey)}`, { headers: authHeaders })
+        .then((response) => response.json())
+        .catch(() => null),
+      fetch(`/api/scouting-practice-matches?event_key=${encodeURIComponent(eventKey)}`, { headers: authHeaders })
+        .then((response) => response.json())
+        .catch(() => null)
+    ]);
+    if (!matchesResult?.success) error = matchesResult?.error || 'Could not load the match schedule.';
+    if (!rosterResult?.success) error = error || rosterResult?.error || 'Could not load event teams.';
+    if (!rankingsResult?.success && !rankingsResult?.unavailable)
+      error = error || rankingsResult?.error || 'Could not load saved match rankings.';
+    const practiceMatches = (practiceResult?.success ? practiceResult.data || [] : []).map((row) => ({
+      key: row.match_key,
+      manual_label: row.label,
+      comp_level: 'practice',
+      practice: true
+    }));
+    matches = [...(matchesResult?.success ? matchesResult.data || [] : []), ...practiceMatches];
+    rosterByKey = new Map((rosterResult?.success ? rosterResult.data : []).map((team) => [team.key, team]));
+    rankings = rankingsResult?.success ? rankingsResult.data || [] : [];
+    unavailable = Boolean(rankingsResult?.unavailable);
+    const preferred =
+      matches.find((match) => isPlayed(match) && !rankings.some((ranking) => ranking.match_key === match.key)) ||
+      matches.filter(isPlayed).at(-1) ||
+      matches[0];
+    if (preferred) selectMatch(preferred.key);
+    loading = false;
+  }
+
+  async function addPracticeMatch() {
+    if (!eventKey) return;
+    addingPractice = true;
+    message = '';
+    try {
+      const response = await fetch('/api/scouting-practice-matches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
+        body: JSON.stringify({ action: 'add', event_key: eventKey })
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.success) throw new Error(result?.error || 'Could not add practice match.');
+      const practiceMatch = {
+        key: result.data.match_key,
+        manual_label: result.data.label,
+        comp_level: 'practice',
+        practice: true
+      };
+      matches = [...matches, practiceMatch];
+      selectMatch(practiceMatch.key);
+    } catch (cause) {
+      message = cause?.message || 'Could not add practice match.';
+    } finally {
+      addingPractice = false;
+    }
+  }
+
+  async function save() {
+    if (!eventKey || !selectedMatchKey || rankedKeys.length < 2) return;
+    saving = true;
+    message = '';
+    try {
+      const response = await fetch('/api/scouting-match-rankings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
+        body: JSON.stringify({
+          action: 'save',
+          event_key: eventKey,
+          match_key: selectedMatchKey,
+          ranked_team_keys: rankedKeys
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.success) throw new Error(result?.error || 'Could not save match ranking.');
+      rankings = [...rankings.filter((item) => item.match_key !== result.data.match_key), result.data];
+      message = `${matchLabel(selectedMatch)} ranking saved.`;
+    } catch (cause) {
+      message = cause?.message || 'Could not save match ranking.';
+    } finally {
+      saving = false;
+    }
+  }
+
+  onMount(async () => {
+    eventKey = await fetchActiveScoutingEventKey();
+    if (!eventKey) {
+      loading = false;
+      return;
+    }
+    await load();
+  });
+</script>
+
+<svelte:head><title>Match Rankings</title></svelte:head>
+
+<div class="page-header">
+  <div class="header-content">
+    <h1><ListOrdered size={22} /> Match Rankings</h1>
+    <p>
+      Record the scouting group's best-to-worst call after each match. Those direct results connect across matches in
+      Power Rankings.
+    </p>
+  </div>
+  {#if eventKey}<button class="btn btn-sm" on:click={load} disabled={loading}><RefreshCw size={14} /> Refresh</button
+    >{/if}
+</div>
+
+{#if loading}
+  <p class="text-muted">Loading match rankings...</p>
+{:else if !eventKey}
+  <div class="empty-state">
+    <ListOrdered size={40} />
+    <h3>No active scouting event</h3>
+    <p>Set one in <a href="/scouting-admin">Scouting Admin</a>.</p>
+  </div>
+{:else if error}
+  <div class="error-container"><p>{error}</p></div>
+{:else if unavailable}
+  <div class="error-container">
+    <p>Match rankings will be available after the scouting match-rankings migration is applied.</p>
+  </div>
+{:else}
+  <section class="summary-strip" aria-label="Match ranking progress">
+    <span><strong>{rankedCount}</strong> ranked match{rankedCount === 1 ? '' : 'es'}</span>
+    <span><strong>{unrankedMatches}</strong> remaining</span>
+    <a href="/powerrankings">View Power Rankings</a>
+  </section>
+
+  <!-- Phone (#124): the match list and the ranking are separate screens. -->
+  <div
+    class="ranking-workspace"
+    class:ph-list={$isPhone && phoneScreen === 'list'}
+    class:ph-rank={$isPhone && phoneScreen === 'rank'}
+  >
+    <aside class="match-list" aria-label="Event matches">
+      <div class="match-list-header">
+        <h2>Matches</h2>
+        <button type="button" class="btn btn-secondary btn-sm" on:click={addPracticeMatch} disabled={addingPractice}
+          ><Plus size={14} /> Add practice match</button
+        >
+      </div>
+      {#each matches as match (match.key)}
+        <button
+          class:active={match.key === selectedMatchKey}
+          class:played={isPlayed(match)}
+          on:click={() => {
+            selectMatch(match.key);
+            phoneScreen = 'rank';
+          }}
+        >
+          <span>{matchLabel(match)}</span>
+          <small class:todo={isPlayed(match) && !rankings.some((ranking) => ranking.match_key === match.key)}
+            >{rankings.some((ranking) => ranking.match_key === match.key)
+              ? 'Ranked'
+              : isPlayed(match)
+                ? 'Ready'
+                : 'Scheduled'}</small
+          >
+        </button>
+      {/each}
+    </aside>
+
+    <section class="order-panel">
+      {#if selectedMatch}
+        {#key selectedMatchKey}
+          <div class="order-body">
+            {#if $isPhone}<button type="button" class="ph-back" on:click={() => (phoneScreen = 'list')}
+                ><ArrowLeft size={18} /> All matches</button
+              >{/if}
+            <div class="order-heading">
+              <div>
+                <h2>{matchLabel(selectedMatch)}</h2>
+                <p>
+                  {selectedRanking
+                    ? 'Update the shared conclusion if the group revises its call.'
+                    : 'Move robots into the order the group saw on the field.'}
+                </p>
+              </div>
+              <button class="btn btn-primary" on:click={save} disabled={saving || rankedKeys.length < 2}
+                ><Check size={16} /> {saving ? 'Saving...' : 'Save ranking'}</button
+              >
+            </div>
+            <ol class="ranked-robots">
+              {#each rankedKeys as teamKey, index (teamKey)}
+                <li>
+                  <span class="rank-number">{index + 1}</span>
+                  <strong>{teamLabel(teamKey)}</strong>
+                  <span class="move-controls">
+                    <button class="icon-btn" title="Move up" on:click={() => move(index, -1)} disabled={index === 0}
+                      ><ArrowUp size={16} /></button
+                    >
+                    <button
+                      class="icon-btn"
+                      title="Move down"
+                      on:click={() => move(index, 1)}
+                      disabled={index === rankedKeys.length - 1}><ArrowDown size={16} /></button
+                    >
+                    <button class="icon-btn" title="Remove" on:click={() => removeTeamFromRanking(teamKey)}
+                      ><X size={16} /></button
+                    >
+                  </span>
+                </li>
+              {/each}
+            </ol>
+            <div class="add-team-row">
+              <input
+                class="form-input"
+                bind:value={teamInput}
+                placeholder="Add team #"
+                on:keydown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addTeamToRanking();
+                  }
+                }}
+              />
+              <button type="button" class="btn btn-secondary btn-sm" on:click={addTeamToRanking}
+                ><Plus size={14} /> Add team</button
+              >
+            </div>
+            {#if message}<p class:save-error={message.includes('Could not')} class="save-message">{message}</p>{/if}
+          </div>
+        {/key}
+      {:else}
+        <div class="empty-state compact">
+          <ListOrdered size={32} />
+          <h3>No matches available</h3>
+        </div>
+      {/if}
+    </section>
+  </div>
+{/if}
+
+<style>
+  h1,
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-2);
+  }
+  .summary-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-4);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .summary-strip strong {
+    color: var(--text);
+  }
+  .summary-strip a {
+    margin-left: auto;
+  }
+  .ranking-workspace {
+    display: grid;
+    grid-template-columns: minmax(13rem, 0.6fr) minmax(0, 1.4fr);
+    gap: var(--space-5);
+    margin-top: var(--space-4);
+  }
+  .match-list {
+    border-right: 1px solid var(--border);
+    padding-right: var(--space-4);
+    max-height: calc(calc(100 * var(--vh)) - 16rem);
+    overflow: auto;
+  }
+  .match-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap-2);
+    margin-bottom: var(--space-2);
+  }
+  .match-list-header h2 {
+    margin: 0;
+  }
+  .match-list h2,
+  .order-panel h2 {
+    margin-top: 0;
+    font-size: 1rem;
+  }
+  .match-list button {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text);
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .match-list button.active {
+    border-color: var(--accent-strong);
+    box-shadow: inset 3px 0 var(--accent-strong);
+  }
+  .match-list small.todo {
+    color: var(--accent-strong);
+    font-weight: 600;
+  }
+  .match-list small {
+    color: var(--text-muted);
+  }
+  .order-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-4);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--space-3);
+  }
+  .order-heading p {
+    margin: var(--space-1) 0 0;
+    color: var(--text-muted);
+  }
+  .ranked-robots {
+    list-style: none;
+    margin: var(--space-3) 0;
+    padding: 0;
+    border-top: 1px solid var(--border);
+  }
+  .ranked-robots li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 3.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .rank-number {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: 0 0 auto;
+    background: var(--accent-subtle);
+    color: var(--accent-strong);
+    font-weight: 700;
+    border-radius: 50%;
+  }
+  .move-controls {
+    display: flex;
+    gap: var(--gap-1);
+    margin-left: auto;
+  }
+  .add-team-row {
+    display: flex;
+    gap: var(--gap-2);
+    margin-top: var(--space-3);
+  }
+  .add-team-row .form-input {
+    max-width: 12rem;
+  }
+  .save-message {
+    margin: var(--space-3) 0;
+    color: var(--success);
+  }
+  .save-error {
+    color: var(--danger);
+  }
+  @media (max-width: 700px) {
+    .ranking-workspace {
+      grid-template-columns: 1fr;
+    }
+    .match-list {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 0 var(--space-3);
+      max-height: 14rem;
+    }
+    .order-heading {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .summary-strip {
+      flex-wrap: wrap;
+    }
+    .summary-strip a {
+      margin-left: 0;
+    }
+  }
+
+  /* Phone (#124) */
+  .ranking-workspace.ph-list .order-panel,
+  .ranking-workspace.ph-rank .match-list {
+    display: none;
+  }
+  .ranking-workspace.ph-list,
+  .ranking-workspace.ph-rank {
+    grid-template-columns: 1fr;
+  }
+  .ranking-workspace.ph-list .match-list {
+    max-height: none;
+    border: 0;
+    padding: 0;
+  }
+  .ranking-workspace.ph-list .match-list > button {
+    min-height: 52px;
+  }
+  .ph-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--tap-min);
+    margin-bottom: var(--space-2);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
+  }
+  .ph-rank .ranked-robots li {
+    min-height: 3.5rem;
+  }
+  .ph-rank .move-controls .icon-btn {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+  .ph-rank .rank-number {
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1.05rem;
+  }
+  .ph-rank .order-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ph-rank .order-heading .btn-primary {
+    position: fixed;
+    left: calc(var(--page-gutter) + var(--safe-left));
+    right: calc(var(--page-gutter) + var(--safe-right));
+    bottom: calc(var(--dock-height) + var(--space-2));
+    z-index: 10;
+    min-height: var(--tap-comfort);
+    justify-content: center;
+    box-shadow: var(--shadow-dock);
+  }
+  .ph-rank .order-body {
+    padding-bottom: 4.5rem;
+  }
+  @media (max-width: 900px) {
+    .page-header p {
+      display: none;
+    }
+  }
+</style>

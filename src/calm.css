@@ -1,0 +1,61 @@
+/* Calmer colors for both themes.
+ *
+ * Light: the base light theme is built for a bright office, with near-white cards,
+ * near-black text and a fully saturated gold. Over a long event day that glares, so
+ * this darkens the surfaces to a warm gray-beige, softens the text and mutes the
+ * accents. Body and secondary text stay at or above WCAG AA (4.5:1).
+ *
+ * Dark: text is a little dimmer, and buttons and fields now take the theme's text
+ * color. Plain <button>s with no color of their own (the pit scouting team tiles, for
+ * example) otherwise render pure white under a dark color scheme.
+ *
+ * Loaded after app.css. The pit-board style (competition.css) still wins over both.
+ */
+
+/* Zero specificity, so any rule that sets its own color still wins. */
+:where(button, input, select, textarea) {
+  color: var(--text);
+}
+
+:root[data-theme='modern'] {
+  --color-white: #ebe8e0;
+  --color-black: #2c2920;
+  --neutral-100: #e3e0d7;
+  --neutral-300: #c9c4b6;
+  --neutral-500: #5f5a4d;
+  --neutral-800: #34312a;
+
+  --background: #dad7ce;
+  --surface-2: #e3e0d7;
+  --surface-3: #d8d5cb;
+
+  --brand-gold-soft: #e6dcc0;
+  --brand-gold-base: #c9a64e;
+  --brand-gold-strong: #5f4614;
+
+  --blue-soft: #d3dde8;
+  --blue-base: #3f6fa8;
+  --blue-strong: #264f78;
+
+  --green-soft: #d2e1d2;
+  --green-base: #5b9a60;
+  --green-strong: #2a5f31;
+
+  --red-soft: #e9d3cf;
+  --red-base: #a93f3a;
+  --red-strong: #6f2822;
+
+  --orange-soft: #ecdbc8;
+  --orange-base: #d39b62;
+  --orange-strong: #7c4318;
+
+  --shadow-lg: 0 8px 24px rgba(44, 41, 32, 0.1);
+  --btn-focus-ring: rgba(201, 166, 78, 0.35);
+}
+
+:root[data-theme='modern-dark'] {
+  --color-black: #a9a9ae;
+  --neutral-800: #a9a9ae;
+  --secondary: #a9a9ae;
+  --text: #a9a9ae;
+}

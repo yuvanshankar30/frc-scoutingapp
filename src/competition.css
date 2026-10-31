@@ -1,0 +1,124 @@
+/* The "pit board" look (navy and cyan, condensed headings).
+ *
+ * Not the default: the app uses its own dark and light themes (app.css, calm.css). This
+ * stays as an optional style, applied with data-style="pit-board" on <html> (see
+ * stores/theme.js), on top of either theme. It re-points the design tokens in app.css
+ * at a different identity instead of restyling every page: navy and cyan, condensed
+ * uppercase headings and squarer corners. Loaded after app.css.
+ */
+
+/* Layout sizes the app shell uses, whichever style is on. */
+:root {
+  --rail-width: 15.5rem;
+  --strip-height: 3.25rem;
+}
+
+:root[data-style='pit-board'] {
+  --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+/* Dark: readable in a dim pit or bleachers. */
+:root[data-theme='modern-dark'][data-style='pit-board'] {
+  color-scheme: dark;
+  --color-white: #121a33;
+  --color-black: #c9d4ee;
+  --neutral-100: #172040;
+  --neutral-300: #263256;
+  --neutral-500: #8c9abf;
+  --neutral-800: #c9d4ee;
+
+  --primary: #121a33;
+  --secondary: #c9d4ee;
+  --background: #0a0f1f;
+  --card: #121a33;
+  --surface-1: #121a33;
+  --surface-2: #172040;
+  --surface-3: #1d2850;
+  --text: #dbe3f7;
+  --text-secondary: #8c9abf;
+  --text-muted: #8c9abf;
+  --muted: #8c9abf;
+  --muted-bg: #172040;
+  --border: #263256;
+  --divider: #263256;
+  --on-primary: #06202a;
+
+  --brand-gold-soft: #0f3a4a;
+  --brand-gold-base: #2cc7ee;
+  --brand-gold-strong: #8fe3f7;
+  --accent: #2cc7ee;
+  --accent-strong: #8fe3f7;
+  --accent-subtle: #0f3a4a;
+  --accent-contrast: #06202a;
+  --btn-focus-ring: rgba(44, 199, 238, 0.4);
+  --warning: #f5b53c;
+  --shadow-lg: 0 10px 30px rgba(2, 6, 20, 0.5);
+}
+
+/* Light: for sunny practice fields and projectors. */
+:root[data-theme='modern'][data-style='pit-board'] {
+  color-scheme: light;
+  --color-white: #ffffff;
+  --color-black: #0d1530;
+  --neutral-100: #eef2f9;
+  --neutral-300: #cfd8ea;
+  --neutral-500: #5b6a8f;
+  --neutral-800: #17213f;
+
+  --primary: #ffffff;
+  --secondary: #0d1530;
+  --background: #e7edf7;
+  --card: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #eef2f9;
+  --surface-3: #e3e9f5;
+  --text: #17213f;
+  --text-secondary: #5b6a8f;
+  --text-muted: #5b6a8f;
+  --muted: #5b6a8f;
+  --muted-bg: #eef2f9;
+  --border: #cfd8ea;
+  --divider: #cfd8ea;
+  --on-primary: #ffffff;
+
+  --brand-gold-soft: #d9f3fb;
+  --brand-gold-base: #0a8fb3;
+  --brand-gold-strong: #05526a;
+  --accent: #0a8fb3;
+  --accent-strong: #05526a;
+  --accent-subtle: #d9f3fb;
+  --accent-contrast: #ffffff;
+  --btn-focus-ring: rgba(10, 143, 179, 0.35);
+  --warning: #b97a00;
+  --shadow-lg: 0 10px 30px rgba(13, 21, 48, 0.14);
+}
+
+:root[data-style='pit-board'] body {
+  font-family: var(--font-body);
+  background: var(--background);
+  color: var(--text);
+}
+
+:root[data-style='pit-board'] h1,
+:root[data-style='pit-board'] h2,
+:root[data-style='pit-board'] h3,
+:root[data-style='pit-board'] .display {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+:root[data-style='pit-board'] h1 {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Pages that render their own header cards: keep them but square them up. */
+:root[data-style='pit-board'] .page-header,
+:root[data-style='pit-board'] .card {
+  border-radius: var(--radius-md);
+}

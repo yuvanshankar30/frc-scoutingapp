@@ -1,0 +1,2 @@
+-- Runs after the migrations on `supabase db reset` (local development only). The schema migration already
+-- creates the starting rows the app needs; add demo data here if you want some locally.
