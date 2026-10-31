@@ -4,7 +4,6 @@ The shell around every page.
 
 | Page | What it covers |
 | --- | --- |
-| [first-run-setup.md](first-run-setup.md) | The one-time setup: team, look, timezone, first admin, setup token |
 | [home.md](home.md) | Home: standing, next match, coverage, your assignments |
 | [sign-in.md](sign-in.md) | Signing in, creating an account, usernames, forgotten passwords |
 | [account.md](account.md) | The Account page |

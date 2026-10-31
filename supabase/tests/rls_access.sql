@@ -16,7 +16,8 @@ select id, name || '@example.test' from ids;
 update public.user_profiles set role = 'admin', general_role = 'lead' where id = (select id from ids where name = 'admin');
 update public.user_profiles set general_role = 'member', permissions = array['CAN_SEE_ROUTES']
  where id = (select id from ids where name = 'scout');
-insert into public.app_settings (team_number, team_name, setup_completed_at) values (1234, 'Test Team', now());
+insert into public.app_settings (id, team_number, team_name) values (1, 1234, 'Test Team')
+  on conflict (id) do update set team_number = excluded.team_number, team_name = excluded.team_name;
 insert into public.match_scout_entries (event_key, match_key, team_key, created_by)
 values ('2026test', '2026test_qm1', 'frc254', (select id from ids where name = 'scout'));
 

@@ -1,7 +1,7 @@
 {
 	"name": "frc-scoutingapp",
 	"private": true,
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"type": "module",
 	"description": "Scouting and match analysis for an FRC team at competition: match and pit scouting, strategy, rankings and a shared picklist.",
 	"engines": {
@@ -16,7 +16,8 @@
 		"lint": "eslint .",
 		"format": "prettier --config prettier/prettierrc.json --ignore-path prettier/prettierignore --write \"src/**/*.{js,svelte,css}\"",
 		"format:check": "prettier --config prettier/prettierrc.json --ignore-path prettier/prettierignore --check \"src/**/*.{js,svelte,css}\"",
-		"prepare": "svelte-kit sync || echo ''"
+		"prepare": "svelte-kit sync || echo ''",
+		"admin": "node --env-file-if-exists=.env scripts/admin.mjs"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.5",

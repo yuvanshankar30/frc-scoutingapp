@@ -1,5 +1,5 @@
 <script>
-  // The team's settings form, shared by first-run setup (/setup) and Scouting Admin > Team settings. It edits a
+  // The team's settings form, used by Scouting Admin > Team settings. It edits a
   // plain object (`value`) in the shape validateTeamSettingsInput() expects; the page decides what to do with it.
   import Select from '$lib/components/common/Select.svelte';
   import { OPTIONAL_FEATURES, PRESET_BRAND_COLORS, normalizeHexColor } from '$lib/app/teamSettings.js';

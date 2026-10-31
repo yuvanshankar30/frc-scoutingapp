@@ -7,10 +7,10 @@ security decides what each signed-in person can read; see [architecture overview
 
 ## Team settings (`app_settings`)
 
-One row (`id = 1`) written by [first-run setup](../app/first-run-setup.md) and
-[Team settings](../scouting-admin/team-settings.md): `team_number`, `team_name`, `other_team_numbers`, `app_name`,
+One row (`id = 1`), present from the start with no team, written by [Team settings](../scouting-admin/team-settings.md)
+and `npm run admin -- set-team`: `team_number`, `team_name`, `other_team_numbers`, `app_name`,
 `app_short_name`, `brand_color`, `default_theme`, `time_zone`, `logo_url`, `hidden_features`, `allow_sign_up`,
-`setup_completed_at`. Anyone may read it (the sign-in page shows the name, colors and logo); only the server writes it.
+and `setup_completed_at` (no longer used). Anyone may read it (the sign-in page shows the name, colors and logo); only the server writes it.
 
 ## Accounts and roles
 

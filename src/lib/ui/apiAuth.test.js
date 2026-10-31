@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const PROTECTED = /^\/(api|datascout|notescout|pitscout)\b/;
-const PUBLIC = [/^\/api\/tba\//, /^\/api\/setup$/, /^\/api\/scouting-assistant$/];
+const PUBLIC = [/^\/api\/tba\//, /^\/api\/scouting-assistant$/];
 
 function sourceFiles(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

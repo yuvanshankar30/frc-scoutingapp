@@ -176,8 +176,8 @@
   }
 
   $: pathname = $page.url.pathname;
-  // Pages that show no site chrome and need no sign-in: the login form and first-run setup.
-  $: isLogin = pathname === '/login' || pathname === '/setup';
+  // The page that shows no site chrome and needs no sign-in: the login form.
+  $: isLogin = pathname === '/login';
   $: canAdmin = canAdministerScouting($userProfile);
   $: groups = visibleGroups(canAdmin, $team?.hiddenFeatures || []);
   // The phone bar follows the person's competition role (see bottomBarKeys).
@@ -345,6 +345,11 @@
         {/if}
       </header>
 
+      {#if canAdmin && !$team?.teamNumber}
+        <a class="set-team" href="/scouting-admin/team"
+          >Set your team number, name and colors in Scouting Admin &gt; Team settings.</a
+        >
+      {/if}
       <main class="stage" bind:this={stageEl}>
         <slot />
       </main>
@@ -402,6 +407,18 @@
 <ConfirmationDialog />
 
 <style>
+  .set-team {
+    display: block;
+    padding: var(--space-2) var(--space-4);
+    background: var(--accent-subtle);
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    text-decoration: none;
+  }
+  .set-team:hover {
+    text-decoration: underline;
+  }
   .not-connected {
     min-height: calc(100 * var(--vh));
     display: grid;

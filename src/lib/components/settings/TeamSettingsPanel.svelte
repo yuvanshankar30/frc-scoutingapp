@@ -1,5 +1,5 @@
 <script>
-  // Scouting Admin > Team settings: change what first-run setup chose. Admins and the Competition Lead can save;
+  // Scouting Admin > Team settings: the team, its look and its pages (scripts can set them with `npm run admin`). Admins and the Competition Lead can save;
   // the server checks that again (/api/team-settings).
   import { onDestroy } from 'svelte';
   import { ImagePlus, Trash2 } from 'lucide-svelte';
@@ -107,8 +107,8 @@
 
 <section class="team-settings" aria-label="Team settings">
   <p class="sp-lede">
-    Your team, how the app looks and which pages are in the menu. These were set in first-run setup; change them any
-    time.
+    Your team, how the app looks and which pages are in the menu. Scripts can set the same things with
+    <code>npm run admin -- set-team</code>.
   </p>
   {#if !canEdit}
     <div class="status-message status-error" role="alert">Only an admin or the Competition Lead can change these.</div>

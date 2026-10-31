@@ -34,21 +34,20 @@ You have two choices:
 | Variable | Where it comes from |
 | --- | --- |
 | `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY` | Supabase dashboard > Project Settings > API, or `npx supabase status` locally |
-| `SETUP_TOKEN` | Any long random string, e.g. `openssl rand -base64 32` |
 | `TBA_API_KEY` | The Blue Alliance account page, "Read API Keys" |
 | `APP_ORIGIN` | The address you open, e.g. `http://localhost:5173` |
 
-The first time you open the site you land on [first-run setup](../app/first-run-setup.md).
+Then make your admin account and set your team (`npm run admin -- create-admin ...` and `set-team ...`, see the
+README), and sign in.
 
 ## Check it
 
 ```sh
-curl -s http://localhost:5173/api/setup
+npm run admin -- show
 ```
 
-`{"configured":false,"tokenConfigured":true,"databaseError":null}` means the server reaches the database and setup is
-waiting for you. `databaseError` set means the URL or service key is wrong, or the schema has not been applied.
-`tokenConfigured: false` means `SETUP_TOKEN` is missing.
+It prints the team settings row when `.env` points at a database with the schema applied, and an error otherwise. On
+the site, a "Not connected to a database yet" page means the same problem (in development it says which).
 
 ```sh
 curl -s "http://localhost:5173/api/tba/event-info?event_key=2026cc"
@@ -61,8 +60,7 @@ curl -s "http://localhost:5173/api/tba/event-info?event_key=2026cc"
 | Problem | Fix |
 | --- | --- |
 | Every page says "Not connected to a database yet" | `.env` is missing or incomplete, or the schema is not applied. In development the page shows which. Fill in `.env` and restart the server |
-| Every page goes to `/setup` | Setup hasn't been finished yet. Finish it, or check `databaseError` above |
-| Setup says the token is wrong | It must match `SETUP_TOKEN` exactly. Restart the server after editing `.env` |
+| A reminder to set your team shows on every page | No team yet: set it in Scouting Admin > Team settings or with `npm run admin -- set-team` |
 | Sign-up says to check your email, but no email comes | Hosted Supabase's built-in email is rate limited; set up SMTP in Supabase, turn off "Confirm email" while developing, or add accounts in Scouting Admin > Add user |
 | Signed in but every page is empty | Your account is waiting for approval. An admin approves it in Scouting Admin > People |
 | Requests fail when the server is started from a sandboxed shell | The server needs network access. Start it from a normal terminal |

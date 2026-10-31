@@ -91,6 +91,6 @@ describe('safeInternalPath (XSS-04)', () => {
     expect(envExample).toContain('SUPABASE_URL=');
     expect(envExample).toContain('CRON_SECRET=');
     expect(envExample).toContain('GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY=');
-    expect(envExample).toContain('SETUP_TOKEN=');
+    expect(envExample).toContain('SUPABASE_SERVICE_KEY=');
   });
 });

@@ -1,6 +1,4 @@
-import { redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
-import { loadTeamSettings } from '$lib/server/teamSettings.js';
 
 // Every route in this app POSTs JSON over fetch(). Real HTML form submissions
 // and no-cors requests with an empty Content-Type (the content types a browser
@@ -44,24 +42,4 @@ export async function csrfCheck({ event, resolve }) {
   return response;
 }
 
-// Pages that work before first-run setup is done.
-const isSetupPath = (pathname) => pathname === '/setup' || pathname.startsWith('/api/setup');
-
-/**
- * Until first-run setup is done, every page goes to /setup; afterwards /setup goes home. Only page loads are
- * redirected (API routes answer for themselves), and nothing is redirected when the settings could not be read
- * at all, so a database outage shows the real error instead of the setup page.
- */
-export async function setupGate({ event, resolve }) {
-  const { pathname } = event.url;
-  const isPage = event.request.method === 'GET' && !pathname.startsWith('/api/');
-  if (!isPage) return resolve(event);
-  const { settings, error } = await loadTeamSettings();
-  if (error) return resolve(event);
-  const configured = Boolean(settings?.configured);
-  if (!configured && !isSetupPath(pathname)) redirect(303, '/setup');
-  if (configured && pathname === '/setup') redirect(303, '/');
-  return resolve(event);
-}
-
-export const handle = sequence(csrfCheck, setupGate);
+export const handle = sequence(csrfCheck);

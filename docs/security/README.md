@@ -24,8 +24,8 @@ are full of people on the same Wi-Fi, so the rules are enforced in the database,
 
 - **The service-role key stays on the server** (`src/lib/server/serviceClient.js`, `$env/dynamic/private`). Routes that
   use it check the caller first (`src/lib/server/scouting/scoutingAccess.js`).
-- **First-run setup needs `SETUP_TOKEN`**, compared in constant time and rate limited, and can only happen once
-  ([first-run setup](../app/first-run-setup.md)).
+- **No setup screen to hijack.** A new site has no web page that makes the first admin: it is made with
+  `npm run admin -- create-admin`, which needs the service key, so only someone with access to the server's `.env` can.
 - **Cross-site requests.** `hooks.server.js` rejects cross-site form posts and adds `X-Frame-Options: DENY`,
   `frame-ancestors 'none'`, `nosniff` and a same-origin referrer policy. SvelteKit's own origin check stays on.
 - **The Blue Alliance key and AI keys** are only used on the server; the browser calls `/api/tba/*` (public data,
@@ -40,7 +40,7 @@ are full of people on the same Wi-Fi, so the rules are enforced in the database,
 
 ## Your responsibilities when you deploy
 
-- Keep `.env`, `SUPABASE_SERVICE_KEY` and `SETUP_TOKEN` out of git and out of any `PUBLIC_` variable.
+- Keep `.env` and `SUPABASE_SERVICE_KEY` out of git and out of any `PUBLIC_` variable.
 - Serve the site over HTTPS, and set `ORIGIN` / `APP_ORIGIN` to its real address.
 - Approve only people you know, and remove or ban accounts when people leave.
 - Keep dependencies up to date (`npm audit`). The Docker build installs with `npm ci --ignore-scripts`.

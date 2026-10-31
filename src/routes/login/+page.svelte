@@ -30,7 +30,7 @@
   const ms = (value) => (reduceMotion ? 0 : value);
 
   $: appName = $team?.appName || 'Scouting';
-  $: teamLine = $team ? ['Team ' + $team.teamNumber, $team.teamName].filter(Boolean).join(' · ') : '';
+  $: teamLine = $team?.teamNumber ? ['Team ' + $team.teamNumber, $team.teamName].filter(Boolean).join(' · ') : '';
   $: canSignUp = $team?.allowSignUp !== false;
   $: if (!canSignUp && mode === 'signup') mode = 'signin';
   $: isSignUp = mode === 'signup';

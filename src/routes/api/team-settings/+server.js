@@ -1,4 +1,4 @@
-// Scouting Admin > Team settings: change the team, branding and features chosen in first-run setup.
+// Scouting Admin > Team settings: change the team, branding and features.
 // Admins and the Competition Lead may change them; everyone can read them (the sign-in page shows them).
 import { json } from '@sveltejs/kit';
 import { requireApprovedUser } from '$lib/server/scouting/scoutingAccess.js';

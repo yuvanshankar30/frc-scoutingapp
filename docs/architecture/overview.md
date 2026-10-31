@@ -44,7 +44,7 @@ client from that JWT, so Postgres row-level security decides what the caller can
 for writes scouts are not granted directly (match entries, pit problems, deadlines, team settings) and check the
 caller themselves first. The Blue Alliance is only called from the server so its API key never reaches the browser.
 
-## Team settings and first-run setup
+## Team settings
 
 Everything team-specific lives in one row of `app_settings`: team number and name, other teams members compete for, app
 name, brand color, logo, default theme, timezone, hidden pages and whether self sign-up is allowed.
@@ -54,12 +54,13 @@ name, brand color, logo, default theme, timezone, hidden pages and whether self 
 - `src/lib/server/teamSettings.js` reads them on the server with a 30-second cache. The root layout's server load
   (`src/routes/+layout.server.js`) hands them to every page, and the `team` store (`src/lib/stores/team.js`) gives pages
   `$ourTeamKey` and `$ourTeamNumber`.
-- Until setup is done, `hooks.server.js` sends every page to `/setup`. `POST /api/setup` checks `SETUP_TOKEN`, claims the
-  settings row (so two people cannot set up at once), creates the first admin and finishes setup.
-- Afterwards `POST /api/team-settings` (admins and the Competition Lead) changes them, including uploading the logo to
-  the public `branding` bucket.
+- The row exists from the start with no team. Until a team is set, pages fall back to generic names and admins see a
+  reminder linking to Team settings.
+- `POST /api/team-settings` (admins and the Competition Lead) changes them, including uploading the logo to the public
+  `branding` bucket. `npm run admin -- set-team` (`scripts/admin.mjs`) changes them from the command line with the
+  service key, through the same checks.
 
-Details: [first-run setup](../app/first-run-setup.md), [Team settings](../scouting-admin/team-settings.md).
+Details: [Team settings](../scouting-admin/team-settings.md).
 
 ## Shared code
 
@@ -89,7 +90,7 @@ API routes don't build their own clients or checks. Use these instead of copying
 People sign in at `/login` with an email (or a bare username, see [sign-in](../app/sign-in.md)) and password, checked
 by Supabase Auth. A trigger on `auth.users` (`handle_new_user`) gives every new account a `user_profiles` row that is
 **pending**: no role, no permissions. Accounts come from self sign-up (when Team settings allow it), from Scouting Admin
-> Add user (approved at once), or from first-run setup (the first admin).
+> Add user (approved at once), or from `npm run admin -- create-admin` (the first admin, made with the service key).
 
 ## Access model
 

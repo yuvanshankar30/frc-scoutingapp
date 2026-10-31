@@ -1,7 +1,18 @@
 # Team settings
 
-Scouting Admin > Team settings (`/scouting-admin/team`) changes what [first-run setup](../app/first-run-setup.md)
-chose. Admins and the Competition Lead can save; everyone else sees the settings read-only.
+Scouting Admin > Team settings (`/scouting-admin/team`) holds the team's settings. Admins and the Competition Lead can
+save; everyone else sees them read-only. Until a team is set, admins see a reminder at the top of every page.
+
+The same settings can be set from the command line, which is how a new site gets its team before anyone signs in:
+
+```sh
+npm run admin -- set-team --number 1234 --name "Robo Raptors" [--app-name ...] [--short-name ...] [--color "#2563eb"] \
+  [--theme dark|light] [--timezone America/Chicago] [--other-teams "5678,9012"] [--sign-up on|off] [--hide "assistant"]
+npm run admin -- show
+```
+
+`scripts/admin.mjs` uses the service key from `.env` and the same checks as this page. It also makes the first admin
+(`create-admin --email ... --password ...`) and approves accounts (`approve --email ...`).
 
 | Setting | What it changes |
 | --- | --- |

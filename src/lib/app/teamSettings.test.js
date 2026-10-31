@@ -64,7 +64,13 @@ describe('team settings', () => {
     expect(check({}, () => false)).toMatch(/timezone/);
   });
 
-  it('reads an app_settings row, and treats a missing or half-made one as not set up', () => {
+  it('gives defaults before an admin sets the team', () => {
+    const settings = normalizeTeamSettings({ id: 1, team_number: null, team_name: '' });
+    expect(settings).toMatchObject({ configured: false, teamNumber: null, teamKey: '', appName: 'FRC Scouting' });
+    expect(competitionTeamChoices(settings)).toEqual(['Mentor']);
+  });
+
+  it('reads an app_settings row, and treats a missing one as not set up', () => {
     expect(normalizeTeamSettings(null)).toBeNull();
     const row = {
       team_number: 1234,
@@ -78,7 +84,7 @@ describe('team settings', () => {
     };
     const settings = normalizeTeamSettings(row);
     expect(settings).toMatchObject({
-      configured: false,
+      configured: true,
       teamKey: 'frc1234',
       otherTeamNumbers: [5678],
       brandColor: '#2563eb',
@@ -87,7 +93,6 @@ describe('team settings', () => {
       hiddenFeatures: ['predictions'],
       allowSignUp: true
     });
-    expect(normalizeTeamSettings({ ...row, setup_completed_at: '2026-01-01' }).configured).toBe(true);
   });
 
   it('offers the main team first, then the others, then Mentor', () => {

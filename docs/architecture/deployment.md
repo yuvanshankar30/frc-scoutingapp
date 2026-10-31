@@ -31,8 +31,8 @@ Set every variable from [.env.example](../../.env.example) in the host's environ
 - `APP_ORIGIN` and `ORIGIN` are the public address (`https://...`). `ORIGIN` is read by adapter-node to check where form
   posts come from; `APP_ORIGIN` is used for links the app builds.
 - `SUPABASE_SERVICE_KEY` is a secret: keep it in a secret manager, never in the image or a public variable.
-- `SETUP_TOKEN` is only needed until [first-run setup](../app/first-run-setup.md) is done. After that `/api/setup`
-  refuses everything, and you can remove it.
+- The first admin is made from a machine that has the service key: `npm run admin -- create-admin ...` (see the
+  README). There is no web page that can do it.
 
 In Supabase, add the public address to **Authentication > URL Configuration** (Site URL and Redirect URLs).
 
@@ -41,7 +41,7 @@ In Supabase, add the public address to **Authentication > URL Configuration** (S
 - Serve it over HTTPS (most hosts do this for you).
 - Behind a proxy or load balancer, set `ADDRESS_HEADER=X-Forwarded-For` and `XFF_DEPTH=1` so `getClientAddress()`
   returns the visitor's address (the rightmost `X-Forwarded-For` entry, which your proxy adds). The per-address
-  limits on first-run setup and the `/api/tba/*` proxies depend on it.
+  limit on the `/api/tba/*` proxies depends on it.
 - One instance is enough for a team. Team settings are cached for 30 seconds per instance, so with several instances a
   change can take that long to show everywhere.
 - The Supabase free plan is enough for a season of scouting for one team. The cleanup check below warns admins before

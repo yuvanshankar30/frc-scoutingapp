@@ -13,11 +13,11 @@ let cached = null;
 let cachedAt = 0;
 
 export const SETTINGS_COLUMNS =
-  'team_number, team_name, other_team_numbers, app_name, app_short_name, brand_color, default_theme, time_zone, logo_url, hidden_features, allow_sign_up, setup_completed_at';
+  'team_number, team_name, other_team_numbers, app_name, app_short_name, brand_color, default_theme, time_zone, logo_url, hidden_features, allow_sign_up';
 
 /**
- * { settings, error }: settings is null until first-run setup is done. error is set when the database cannot
- * be reached or the schema has not been applied, so the setup page can say what is wrong instead of looping.
+ * { settings, error }: settings has teamNumber null until an admin sets the team. error is set when the database
+ * cannot be reached or the schema has not been applied, so the layout can say what is wrong.
  */
 export async function loadTeamSettings({ fresh = false, db = null } = {}) {
   if (!fresh && cached && Date.now() - cachedAt < CACHE_MS) return cached;
@@ -30,7 +30,7 @@ export async function loadTeamSettings({ fresh = false, db = null } = {}) {
   } catch (error) {
     result = { settings: null, error: error?.message || 'Could not reach the database' };
   }
-  if (result.settings?.configured) setAppTimeZone(result.settings.timeZone);
+  if (result.settings) setAppTimeZone(result.settings.timeZone);
   // Only a working answer is cached, so a fixed configuration is picked up on the next request.
   if (!result.error) {
     cached = result;

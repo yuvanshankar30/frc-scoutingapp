@@ -4,11 +4,11 @@ How the site works **now**, sorted by where things live in the site: one folder 
 tab. For **when** something changed, see [VERSION.md](../VERSION.md).
 
 New here? Start with the [README](../README.md) (setup and deployment), then
-[first-run setup](app/first-run-setup.md).
+[Team settings](scouting-admin/team-settings.md).
 
 | Folder | What's in it |
 | --- | --- |
-| [app/](app/README.md) | The shell around every page: first-run setup, Home, sign-in, Account, access, navigation, look, site controls, phone layout |
+| [app/](app/README.md) | The shell around every page: Home, sign-in, Account, access, navigation, look, site controls, phone layout |
 | [scouting/](scouting/README.md) | The **Scout** menu: Match Scouting, Pit Scouting, My Reports, assignment cards, Quick Scout, offline |
 | [analysis/](analysis/README.md) | The **Analyze** menu: Team View, Strategy Board, Match View, rankings, EPA, AI analytics |
 | [on-the-field/](on-the-field/README.md) | The **On the field** menu: Drive Team, Pit Crew, Picklist, Blue Alliance, Predictions |

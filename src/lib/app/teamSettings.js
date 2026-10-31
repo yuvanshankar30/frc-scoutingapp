@@ -1,7 +1,7 @@
-// The team's own settings: who the app belongs to and how it looks. They are chosen once in first-run setup
-// (/setup) and can be changed later by an admin under Scouting Admin > Team settings. One row in the
+// The team's own settings: who the app belongs to and how it looks. An admin sets them under Scouting Admin > Team
+// settings, and scripts can set them with `npm run admin -- set-team ...` (scripts/admin.mjs). One row in the
 // app_settings table holds them; this module is the single place that reads, checks and applies them, in the
-// browser and on the server alike.
+// browser, on the server and in that script.
 
 export const DEFAULT_BRAND_COLOR = '#2563eb';
 /** Quick picks in the settings form; any color can be chosen as well. */
@@ -52,21 +52,24 @@ export function normalizeHexColor(value, fallback = DEFAULT_BRAND_COLOR) {
   return HEX_COLOR.test(expanded) ? expanded.toLowerCase() : fallback;
 }
 
-/** The settings as the app uses them, from an app_settings row (or null when the site is not set up yet). */
+/**
+ * The settings as the app uses them, from an app_settings row (null when there is no row at all). Before an admin
+ * sets the team, teamNumber is null and `configured` is false; everything else has a sensible default.
+ */
 export function normalizeTeamSettings(row) {
-  if (!row || !parseTeamNumber(row.team_number)) return null;
+  if (!row) return null;
   const teamNumber = parseTeamNumber(row.team_number);
   const teamName = text(row.team_name, 80);
   const otherTeams = [...new Set((row.other_team_numbers || []).map(parseTeamNumber).filter(Boolean))].filter(
     (number) => number !== teamNumber
   );
   return {
-    configured: Boolean(row.setup_completed_at),
+    configured: Boolean(teamNumber),
     teamNumber,
-    teamKey: `frc${teamNumber}`,
+    teamKey: teamNumber ? `frc${teamNumber}` : '',
     teamName,
     otherTeamNumbers: otherTeams,
-    appName: text(row.app_name, 40) || `${teamNumber} Scouting`,
+    appName: text(row.app_name, 40) || (teamNumber ? `${teamNumber} Scouting` : 'FRC Scouting'),
     appShortName: text(row.app_short_name, 16) || 'Scouting',
     brandColor: normalizeHexColor(row.brand_color),
     defaultTheme: THEME_CHOICES.includes(row.default_theme) ? row.default_theme : DEFAULT_THEME,
@@ -78,7 +81,7 @@ export function normalizeTeamSettings(row) {
 }
 
 /**
- * Checks what an admin (or first-run setup) submitted. Returns { value, error }: value holds app_settings
+ * Checks what an admin (or `npm run admin -- set-team`) submitted. Returns { value, error }: value holds app_settings
  * columns ready to write. `isValidTimeZone` comes from timezone.js; it is passed in so this file stays free of
  * imports.
  */
@@ -123,7 +126,8 @@ export function validateTeamSettingsInput(input = {}, { isValidTimeZone = () => 
 /** Team numbers a member can compete for: the main team first, then the others, then Mentor. */
 export function competitionTeamChoices(settings) {
   if (!settings) return ['Mentor'];
-  return [String(settings.teamNumber), ...settings.otherTeamNumbers.map(String), 'Mentor'];
+  const teams = [settings.teamNumber, ...(settings.otherTeamNumbers || [])].filter(Boolean).map(String);
+  return [...teams, 'Mentor'];
 }
 
 const channel = (hex, index) => parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);

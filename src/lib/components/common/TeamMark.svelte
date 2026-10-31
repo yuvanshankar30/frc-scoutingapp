@@ -9,7 +9,7 @@
   <img class="team-mark" src={$team.logoUrl} alt="" width={size} height={size} />
 {:else}
   <span class="team-mark badge" style:--mark-size={`${size}px`} aria-hidden="true">
-    {$team?.teamNumber || '?'}
+    {$team?.teamNumber || ($team?.appShortName || 'S').slice(0, 1)}
   </span>
 {/if}
 

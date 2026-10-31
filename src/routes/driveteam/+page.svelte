@@ -163,7 +163,7 @@
 <div class="dt-page" class:no-next={!nextUp}>
   <div class="dt-header">
     <div>
-      <span class="eyebrow">Team {$ourTeamNumber}</span>
+      <span class="eyebrow">{$ourTeamNumber ? `Team ${$ourTeamNumber}` : 'Your team'}</span>
       <h1><Zap size={22} /> Drive Team</h1>
     </div>
     <button class="btn btn-outline btn-sm" on:click={loadMatches} disabled={loading}
@@ -178,7 +178,11 @@
   {:else if error}
     <div class="dt-empty dt-error">{error}</div>
   {:else if !ourMatches.length}
-    <div class="dt-empty">No matches found for Team {$ourTeamNumber} at this event yet.</div>
+    <div class="dt-empty">
+      {$ourTeamNumber
+        ? `No matches found for Team ${$ourTeamNumber} at this event yet.`
+        : 'Set your team number in Scouting Admin > Team settings to see your matches here.'}
+    </div>
   {:else}
     <div class="dt-freshness">
       <Signal size={13} />

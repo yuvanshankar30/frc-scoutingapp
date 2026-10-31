@@ -69,31 +69,38 @@ Fill in `.env` ([every variable is explained below](#environment-variables)). Th
 | --- | --- |
 | `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY` | Supabase dashboard > Project Settings > API |
 | `SUPABASE_SERVICE_KEY` | Same page, the `service_role` key. Server only; never share or commit it |
-| `SETUP_TOKEN` | Make one: `openssl rand -base64 32`. It unlocks first-run setup |
 | `APP_ORIGIN` | The address you open, e.g. `http://localhost:5173` |
 | `TBA_API_KEY` | The Blue Alliance > Account > Read API Keys |
 
-### 4. Run it and set up your team
+### 4. Make your admin account and set your team
+
+The site has no setup screen. Make the first admin account from the command line, using the service key in `.env`:
+
+```sh
+npm run admin -- create-admin --email you@example.com --password 'a-long-password' --name "Your Name"
+```
+
+Then set your team, either the same way:
+
+```sh
+npm run admin -- set-team --number 1234 --name "Robo Raptors" --color "#2563eb" --timezone America/Chicago
+```
+
+or on the site after signing in, in **Scouting Admin > Team settings** (team number and name, other teams your members
+compete for, app name, brand color, logo, default theme, timezone, which pages are in the menu, and whether people may
+create their own accounts). Until a team is set, admins see a reminder at the top of every page.
+
+`npm run admin -- help` lists every option; `npm run admin -- show` prints the current settings.
+
+### 5. Run it
 
 ```sh
 npm run dev
 ```
 
-Open http://localhost:5173. Until setup is done, every page goes to **first-run setup** (`/setup`):
+Open http://localhost:5173 and sign in with the admin account.
 
-1. Enter your **team number and name**, and any other teams your members compete for (sister or rookie teams).
-2. Pick the **app name**, **brand color** and **default theme** (dark or light). The page shows the color as you pick
-   it.
-3. Pick the **timezone** your events run in and which optional **pages** to show.
-4. Create **your admin account** (name, email, password) and enter the `SETUP_TOKEN` from `.env`.
-
-You are signed in as the site's first admin. Setup runs once; after that the same settings, plus a logo upload, live in
-**Scouting Admin > Team settings**.
-
-> **Why a setup token?** A freshly deployed site has no admin. Without the token, whoever happened to open it first
-> could claim it. With it, only someone who can read the server's environment can.
-
-### 5. Bring your team in
+### 6. Bring your team in
 
 - **People sign up** on the sign-in page ("Create an account"). New accounts can see nothing until an admin approves
   them in **Scouting Admin > People**. You can turn self sign-up off in Team settings.
@@ -159,8 +166,8 @@ When you deploy:
 - Add the public address to Supabase's **Site URL** and **Redirect URLs**.
 - Serve it over HTTPS.
 - Behind a proxy or load balancer (Cloud Run, Render, Fly.io, nginx, ...), set `ADDRESS_HEADER=X-Forwarded-For` and
-  `XFF_DEPTH=1` so the app sees each visitor's address. The per-address limits (first-run setup attempts and the
-  `/api/tba/*` proxies) rely on it; without it every visitor looks like the proxy.
+  `XFF_DEPTH=1` so the app sees each visitor's address. The per-address limit on the
+  `/api/tba/*` proxies relies on it; without it every visitor looks like the proxy.
 - Optional daily data cleanup check: have a scheduler (cron, Cloud Scheduler, GitHub Actions schedule, ...) send
   `POST /api/scouting-admin/retention-cron` with the header `Authorization: Bearer <CRON_SECRET>`. It only tells admins
   when old data could be deleted to stay under the Supabase free-plan limits; an admin approves every cleanup.
@@ -177,7 +184,6 @@ Also listed, with comments, in [.env.example](.env.example).
 | `PUBLIC_SUPABASE_ANON_KEY` | Yes | The project's anon (public) key |
 | `SUPABASE_SERVICE_KEY` | Yes | The service_role key, used only by the server |
 | `SUPABASE_URL` | No | A different Supabase address for the server, if it needs one |
-| `SETUP_TOKEN` | Yes, for first-run setup | Secret that unlocks `/setup`. You can remove it after setup |
 | `APP_ORIGIN` | Yes | The public address of the site |
 | `TBA_API_KEY` | Yes | The Blue Alliance read key |
 | `PUBLIC_USERNAME_EMAIL_DOMAIN` | No | Domain for bare-username logins (default `scouting.local`) |
@@ -217,7 +223,7 @@ Supabase (`npx supabase start`). See [docs/development/](docs/development/README
 | Topic | Where |
 | --- | --- |
 | Every screen, by menu group, plus architecture, deployment and development | [docs/](docs/README.md) |
-| First-run setup and Team settings | [docs/app/first-run-setup.md](docs/app/first-run-setup.md), [docs/scouting-admin/team-settings.md](docs/scouting-admin/team-settings.md) |
+| Team settings and the admin command | [docs/scouting-admin/team-settings.md](docs/scouting-admin/team-settings.md) |
 | How access and data are protected | [docs/security/](docs/security/README.md) |
 | Code conventions | [docs/development/conventions.md](docs/development/conventions.md) |
 | Versions | [VERSION.md](VERSION.md) |

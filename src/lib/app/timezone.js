@@ -1,4 +1,4 @@
-// Dates and times are shown in the team's timezone (set in first-run setup, changeable under
+// Dates and times are shown in the team's timezone (set under
 // Scouting Admin > Team settings), so everyone at an event sees the same clock whatever their
 // phone is set to. Until the settings load, the browser's own timezone (or UTC on the server) is used.
 
