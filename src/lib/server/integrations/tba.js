@@ -3,6 +3,7 @@
 // different TBA event (Scouting Admin > Event setup); tbaEventKeyFor / relabelTbaPayload translate.
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { allowRequest } from '$lib/server/assistant/rateLimit.js';
 import { PUBLIC_EVENT_CACHE } from '$lib/server/integrations/httpCache.js';
 
 export const TBA_API_BASE = 'https://www.thebluealliance.com/api/v3';
@@ -66,6 +67,19 @@ export async function tbaEventName(tbaEventKey) {
 const failure = (error) =>
   json({ success: false, error: error?.message || 'Fetch failed' }, { status: error?.status || 500 });
 
+// The /api/tba/* proxies need no sign-in (the data is public, and pages call them before the session loads), so a
+// script could burn through the server's TBA key quota. This caps each address at a
+// rate no real use comes near. It is deliberately high: at an event every scout can share one venue IP.
+export const TBA_PROXY_LIMIT_PER_MINUTE = 1200;
+
+function clientAddress(event) {
+  try {
+    return event.getClientAddress?.() || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * A GET handler for an /api/tba/* proxy. `load(event)` returns the `data` for `{ success: true, data }`
  * (or a Response to send as-is) and throws TbaError for anything else. `cache` adds the shared public
@@ -73,6 +87,8 @@ const failure = (error) =>
  */
 export function tbaProxy(load, { cache = false } = {}) {
   return async (event) => {
+    if (!allowRequest(`tba-proxy:${clientAddress(event)}`, { limit: TBA_PROXY_LIMIT_PER_MINUTE, windowMs: 60_000 }))
+      return json({ success: false, error: 'Too many requests. Wait a minute and try again.' }, { status: 429 });
     try {
       const data = await load(event);
       if (data instanceof Response) return data;

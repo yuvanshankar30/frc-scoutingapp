@@ -86,3 +86,19 @@ describe('csrfCheck hook', () => {
     expect(res.headers.get('X-Frame-Options')).toBe('DENY');
   });
 });
+
+describe('API cache headers', () => {
+  it('marks API answers private and uncacheable unless the route set its own header', async () => {
+    const plain = await csrfCheck({
+      event: makeEvent({ method: 'GET', url: 'https://scouting.example.org/api/scout-assignments' }),
+      resolve: async () => new Response('{}')
+    });
+    expect(plain.headers.get('cache-control')).toBe('private, no-store');
+
+    const publicData = await csrfCheck({
+      event: makeEvent({ method: 'GET', url: 'https://scouting.example.org/api/tba/event-info' }),
+      resolve: async () => new Response('{}', { headers: { 'Cache-Control': 'public, max-age=60' } })
+    });
+    expect(publicData.headers.get('cache-control')).toBe('public, max-age=60');
+  });
+});

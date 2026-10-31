@@ -33,6 +33,11 @@ export async function csrfCheck({ event, resolve }) {
         response.headers.set(header, value);
       }
     }
+    // API answers hold scouting data for one signed-in person, so no browser or proxy may keep them unless a route
+    // says otherwise (the public /api/tba/* data and the manifest do).
+    if (url.pathname.startsWith('/api/') && !response.headers.has('cache-control')) {
+      response.headers.set('Cache-Control', 'private, no-store');
+    }
   } catch {
     // Response headers may be immutable on synthetic redirect/fetch responses.
   }

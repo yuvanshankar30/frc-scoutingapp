@@ -28,8 +28,12 @@ are full of people on the same Wi-Fi, so the rules are enforced in the database,
   ([first-run setup](../app/first-run-setup.md)).
 - **Cross-site requests.** `hooks.server.js` rejects cross-site form posts and adds `X-Frame-Options: DENY`,
   `frame-ancestors 'none'`, `nosniff` and a same-origin referrer policy. SvelteKit's own origin check stays on.
-- **The Blue Alliance key and AI keys** are only used on the server; the browser calls `/api/tba/*` and
-  `/api/scouting-assistant`.
+- **The Blue Alliance key and AI keys** are only used on the server; the browser calls `/api/tba/*` (public data,
+  limited to 1,200 requests a minute per address) and `/api/scouting-assistant` (approved accounts only, and every
+  model call has an output cap, `ASSISTANT_MAX_TOKENS`).
+- **API answers are never cached.** Every `/api/*` answer that sets no `Cache-Control` of its own gets
+  `private, no-store`, so a shared device or proxy never keeps someone's scouting data.
+- **Server-only database functions** (the data-cleanup inventory, the trigger functions) can't be run by client roles.
 - **Untrusted text.** Scout notes and other free text are escaped when shown; the AI assistant is told to treat them as
   data, never as instructions, and can only propose changes that a person confirms.
 - **Error text is scrubbed** of tokens and keys before it is stored or shown (`src/lib/server/redact.js`).
@@ -39,6 +43,6 @@ are full of people on the same Wi-Fi, so the rules are enforced in the database,
 - Keep `.env`, `SUPABASE_SERVICE_KEY` and `SETUP_TOKEN` out of git and out of any `PUBLIC_` variable.
 - Serve the site over HTTPS, and set `ORIGIN` / `APP_ORIGIN` to its real address.
 - Approve only people you know, and remove or ban accounts when people leave.
-- Keep dependencies up to date (`npm audit`).
+- Keep dependencies up to date (`npm audit`). The Docker build installs with `npm ci --ignore-scripts`.
 
 Found a security problem? Report it privately to the repository owner rather than in a public issue.

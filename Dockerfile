@@ -7,7 +7,8 @@ FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: no dependency may run install scripts in the build. The build runs svelte-kit sync itself.
+RUN npm ci --ignore-scripts
 
 COPY . .
 

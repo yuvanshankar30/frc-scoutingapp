@@ -23,8 +23,17 @@ export function assistantConfig(env = {}) {
     provider: name,
     apiKey,
     baseUrl: env.ASSISTANT_BASE_URL || preset.baseUrl,
-    model: env.ASSISTANT_MODEL || preset.model
+    model: env.ASSISTANT_MODEL || preset.model,
+    maxTokens: maxTokensFrom(env.ASSISTANT_MAX_TOKENS)
   };
+}
+
+// A cap on each answer's length, so one question cannot run up an unbounded bill. Generous
+// enough for thinking models; ASSISTANT_MAX_TOKENS overrides it within 1,024 to 65,536.
+export const DEFAULT_MAX_TOKENS = 16384;
+function maxTokensFrom(value) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? Math.min(65536, Math.max(1024, n)) : DEFAULT_MAX_TOKENS;
 }
 
 /** Our neutral message shape -> chat-completions messages. */
@@ -71,7 +80,12 @@ export function parseReply(payload) {
 
 export function makeCallModel(config, fetchImpl = fetch) {
   return async ({ system, messages, tools }) => {
-    const body = { model: config.model, messages: toWireMessages(system, messages), temperature: 0.2 };
+    const body = {
+      model: config.model,
+      messages: toWireMessages(system, messages),
+      temperature: 0.2,
+      max_tokens: config.maxTokens || DEFAULT_MAX_TOKENS
+    };
     if (tools?.length) body.tools = tools.map((t) => ({ type: 'function', function: t }));
     const response = await fetchImpl(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',

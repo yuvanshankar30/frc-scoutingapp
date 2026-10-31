@@ -93,5 +93,15 @@ select pg_temp.expect(
   (select permissions @> array['CAN_SEE_ROUTES'] from public.user_profiles where id = (select id from ids where name = 'pending')),
   'admin approves an account');
 
+-- The profile guard's helper never describes another account, and the data-cleanup functions are server-only.
+select pg_temp.act_as('pending');
+select pg_temp.expect(
+  (select auth_email from public.user_profiles_actor_context((select id from ids where name = 'admin'))) is null,
+  'actor context describes another account');
+reset role;
+select pg_temp.expect(not has_function_privilege('anon', 'public.retention_sizes()', 'execute'), 'anon can run retention_sizes');
+select pg_temp.expect(not has_function_privilege('authenticated', 'public.retention_storage_objects(text,text)', 'execute'),
+  'signed-in users can list stored files');
+
 select 'rls_access: all checks passed' as result;
 rollback;

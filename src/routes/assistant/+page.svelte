@@ -261,7 +261,9 @@
     }
     eventKey = (await fetchActiveScoutingEventKey()) || '';
     try {
-      configured = (await fetch('/api/scouting-assistant').then((r) => r.json())).configured !== false;
+      configured =
+        (await fetch('/api/scouting-assistant', { headers: await getAuthHeader() }).then((r) => r.json()))
+          .configured !== false;
     } catch {
       configured = true;
     }

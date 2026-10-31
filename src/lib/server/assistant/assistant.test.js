@@ -1235,3 +1235,24 @@ describe('alliance_matchup', () => {
     expect((await ask(['5940'], ['5940', '254'])).error).toMatch(/both alliances/);
   });
 });
+
+describe('model output cap', () => {
+  it('sends max_tokens on every call, from ASSISTANT_MAX_TOKENS within limits', async () => {
+    const { assistantConfig, makeCallModel, DEFAULT_MAX_TOKENS } = await import('./llmClient.js');
+    expect(assistantConfig({ GEMINI_API_KEY: 'k' }).maxTokens).toBe(DEFAULT_MAX_TOKENS);
+    expect(assistantConfig({ GEMINI_API_KEY: 'k', ASSISTANT_MAX_TOKENS: '10' }).maxTokens).toBe(1024);
+    let sent;
+    const fetchImpl = async (_url, init) => {
+      sent = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ choices: [{ message: { content: 'hi' } }] }) };
+    };
+    await makeCallModel(
+      assistantConfig({ GEMINI_API_KEY: 'k', ASSISTANT_MAX_TOKENS: '2048' }),
+      fetchImpl
+    )({
+      system: 's',
+      messages: [{ role: 'user', content: 'q' }]
+    });
+    expect(sent.max_tokens).toBe(2048);
+  });
+});

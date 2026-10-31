@@ -39,6 +39,9 @@ In Supabase, add the public address to **Authentication > URL Configuration** (S
 ## Hosting notes
 
 - Serve it over HTTPS (most hosts do this for you).
+- Behind a proxy or load balancer, set `ADDRESS_HEADER=X-Forwarded-For` and `XFF_DEPTH=1` so `getClientAddress()`
+  returns the visitor's address (the rightmost `X-Forwarded-For` entry, which your proxy adds). The per-address
+  limits on first-run setup and the `/api/tba/*` proxies depend on it.
 - One instance is enough for a team. Team settings are cached for 30 seconds per instance, so with several instances a
   change can take that long to show everywhere.
 - The Supabase free plan is enough for a season of scouting for one team. The cleanup check below warns admins before

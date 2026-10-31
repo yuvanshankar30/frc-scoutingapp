@@ -158,6 +158,9 @@ When you deploy:
   address. Also set `ORIGIN` to the same address: SvelteKit's adapter uses it to check where requests come from.
 - Add the public address to Supabase's **Site URL** and **Redirect URLs**.
 - Serve it over HTTPS.
+- Behind a proxy or load balancer (Cloud Run, Render, Fly.io, nginx, ...), set `ADDRESS_HEADER=X-Forwarded-For` and
+  `XFF_DEPTH=1` so the app sees each visitor's address. The per-address limits (first-run setup attempts and the
+  `/api/tba/*` proxies) rely on it; without it every visitor looks like the proxy.
 - Optional daily data cleanup check: have a scheduler (cron, Cloud Scheduler, GitHub Actions schedule, ...) send
   `POST /api/scouting-admin/retention-cron` with the header `Authorization: Bearer <CRON_SECRET>`. It only tells admins
   when old data could be deleted to stay under the Supabase free-plan limits; an admin approves every cleanup.
