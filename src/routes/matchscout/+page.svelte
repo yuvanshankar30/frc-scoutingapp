@@ -50,9 +50,7 @@
     Check,
     ChevronRight,
     ClipboardCheck,
-    ExternalLink,
     Gauge,
-    GraduationCap,
     MapPinned,
     Minus,
     Plus,
@@ -64,7 +62,6 @@
     Wrench
   } from 'lucide-svelte';
   import PowerRankingPicker from '$lib/components/scouting/PowerRankingPicker.svelte';
-  import { youtubeUrl } from '$lib/scouting/training.js';
   import {
     REPORT_KINDS,
     REPORT_KIND_LABELS,
@@ -207,8 +204,8 @@
   // The robots it could have defended: the other alliance, or whatever the scout types when the schedule is missing.
   $: opponents = (alliance === 'red' ? matchTeams.blue : matchTeams.red) || [];
   $: defenseChoices = [...new Set([...opponents, ...defenseTargets])];
-  // The robots in this match (for the power ranking) and, for a training match, the past match being watched.
-  let matchTeams = { red: [], blue: [], training: null };
+  // The robots in this match (for the power ranking).
+  let matchTeams = { red: [], blue: [] };
   let matchTeamsLoading = false;
   let matchTeamsFor = '';
   let submitted = false;
@@ -502,7 +499,7 @@
 
   async function loadMatchTeams(key) {
     matchTeamsFor = key;
-    matchTeams = { red: [], blue: [], training: null };
+    matchTeams = { red: [], blue: [] };
     if (!key) return;
     const [event, match] = key.split('|');
     matchTeamsLoading = true;
@@ -516,8 +513,7 @@
             if (matchTeamsFor !== key || !payload?.success) return;
             matchTeams = {
               red: payload.data.red || [],
-              blue: payload.data.blue || [],
-              training: payload.data.training || null
+              blue: payload.data.blue || []
             };
             // The schedule knows which alliance the robot is on; a scout who picked the other one gets corrected.
             if (!editing && robotKey && matchTeams.red.includes(robotKey)) alliance = 'red';
@@ -1151,23 +1147,6 @@
     </aside>
 
     <section class="match-workspace">
-      {#if matchTeams.training}
-        <div class="training-banner">
-          <GraduationCap size={18} />
-          <div>
-            <b>Training match</b><span
-              >{matchTeams.training.source_event_name || matchTeams.training.source_event_key} · {matchTeams.training
-                .source_label || matchTeams.training.source_match_key}</span
-            >
-          </div>
-          {#if matchTeams.training.video_key}<a
-              class="btn btn-secondary"
-              href={youtubeUrl(matchTeams.training.video_key)}
-              target="_blank"
-              rel="noopener noreferrer">Watch the match <ExternalLink size={14} /></a
-            >{:else}<span class="muted">No video on TBA</span>{/if}
-        </div>
-      {/if}
       {#if !submitted && assignmentReady && reportKind === 'robot'}
         <div class="persistent-status" class:urgent={requiresPitReport}>
           <div><span class="field-label">Robot status</span><small>Available throughout the match</small></div>
@@ -3273,34 +3252,6 @@
   }
   .submitted-state {
     background: var(--surface-2);
-  }
-  .training-banner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--gap-3);
-    margin-bottom: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--brand-gold-strong);
-    background: var(--brand-gold-soft);
-  }
-  .training-banner > div {
-    display: grid;
-    flex: 1;
-    min-width: 12rem;
-  }
-  .training-banner span {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-  .training-banner .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .training-banner .muted {
-    font-size: 0.8rem;
   }
   /* defense details (Data), per-shift robot status and foul nature (Robot). */
   .defense-card {

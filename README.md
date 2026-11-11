@@ -19,9 +19,8 @@ flowchart LR
   each scout's assignments and their submitted reports. Reports made with no signal are queued and sent later.
 - **Analyze:** Team View with charts, a Strategy Board, Match View, power and match rankings, EPA, and an optional AI
   assistant that answers questions from your scouting data.
-- **On the field:** your team's schedule for the drive team, robot problem tickets for the pit crew, a shared
-  picklist, Blue Alliance lookups and a match prediction game.
-- **Scouting Admin:** event setup, assignments and deadlines, training on past matches, editable scouting forms,
+- **On the field:** your team's schedule for the drive team, a shared picklist and Blue Alliance lookups.
+- **Scouting Admin:** event setup, assignments, editable scouting forms,
   people and competition roles, exports (Excel, CSV, Google Sheets) and Team settings.
 
 The match scouting form and field map follow the **2026 FRC game**. Custom questions can be added from the site
@@ -119,11 +118,11 @@ Then pick your event in **Scouting Admin > Event setup** and start scouting.
 | --- | --- |
 | Team number and name, other teams | Scouting Admin > Team settings |
 | App name, brand color, logo, default theme | Scouting Admin > Team settings |
-| Timezone used for match times, deadlines and exports | Scouting Admin > Team settings |
-| Which optional pages appear in the menu (Pit Crew, Drive Team, Predictions, AI analytics, ...) | Scouting Admin > Team settings |
+| Timezone used for match times and exports | Scouting Admin > Team settings |
+| Which optional pages appear in the menu (Drive Team, AI analytics, ...) | Scouting Admin > Team settings |
 | Whether people may create their own accounts | Scouting Admin > Team settings |
 | Custom questions on the match and pit scouting forms | Scouting Admin > Edit |
-| Who scouts what, and deadlines | Scouting Admin > Assignments, Deadlines |
+| Who scouts what | Scouting Admin > Assignments |
 
 **In the code:**
 

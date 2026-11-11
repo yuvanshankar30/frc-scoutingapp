@@ -25,9 +25,8 @@ describe('navigation', () => {
   it('leaves out the pages Team settings switched off', () => {
     const keys = (hidden) => visibleGroups(true, hidden).flatMap((group) => group.items.map((item) => item.key));
     expect(keys([])).toContain('assistant');
-    expect(keys(['assistant', 'predictions'])).not.toContain('assistant');
-    expect(keys(['assistant', 'predictions'])).not.toContain('predictions');
-    expect(visibleGroups(true, ['pitcrew']).every((group) => group.items.length > 0)).toBe(true);
+    expect(keys(['assistant'])).not.toContain('assistant');
+    expect(visibleGroups(true, ['driveteam']).every((group) => group.items.length > 0)).toBe(true);
   });
 
   it('falls back to Strategy on the phone bar when the role page is switched off', () => {
@@ -61,7 +60,6 @@ describe('navigation', () => {
 
   it('finds the active item for a nested route', () => {
     expect(activeItem('/scouting-admin/team')?.key).toBe('scouting-admin-team');
-    expect(activeItem('/predictions/leaderboard')?.key).toBe('predictions');
     expect(activeItem('/nowhere')).toBeNull();
   });
 
@@ -103,8 +101,6 @@ describe('navigation', () => {
       'Overview',
       'Event setup',
       'Assignments',
-      'Training',
-      'Deadlines',
       'Edit',
       'People',
       'Team settings',
@@ -129,7 +125,7 @@ describe('phone bottom bar', () => {
 
   it('gives the last slot to the page a role uses most', () => {
     expect(bottomBarKeys(['Driver'])).toEqual(['home', 'matchscout', 'myscout', 'driveteam']);
-    expect(bottomBarKeys(['Mechanical Pit'])).toEqual(['home', 'matchscout', 'myscout', 'pitcrew']);
+    expect(bottomBarKeys(['Mechanical Pit'])).toEqual(['home', 'matchscout', 'myscout', 'strategy']);
     expect(bottomBarKeys(['Mechanical Pit', 'Data Scout Member'])).toEqual([
       'home',
       'matchscout',

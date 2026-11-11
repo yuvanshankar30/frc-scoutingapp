@@ -21,9 +21,7 @@ export const THEME_CHOICES = ['dark', 'light'];
 // Pages a team can switch off in Team settings. Hidden pages drop out of the menu; their addresses still work
 // for anyone who has them bookmarked. Keys match the menu items in navigation.js.
 export const OPTIONAL_FEATURES = Object.freeze([
-  { key: 'pitcrew', label: 'Pit Crew', blurb: 'Robot failure tickets for your own robot' },
   { key: 'driveteam', label: 'Drive Team', blurb: "Your team's schedule and standings" },
-  { key: 'predictions', label: 'Predictions', blurb: 'The match prediction game' },
   { key: 'assistant', label: 'Ask the data', blurb: 'AI questions about the scouting data (needs an API key)' },
   { key: 'bluealliance', label: 'Blue Alliance', blurb: 'Team and event lookups' },
   { key: 'epa', label: 'EPA', blurb: 'Statbotics-style expected points' }

@@ -39,8 +39,9 @@ and `setup_completed_at` (no longer used). Anyone may read it (the sign-in page 
 `scout_prescout_assignments`, `scout_match_deadlines`, `scout_notes`, `scout_data_events` (quick scout),
 `scouting_match_rankings` (`ranked_team_keys` is an ordered array, read and written whole), `scouting_pairwise_votes`,
 `scouting_picklist`, `scouting_settings` (the active event and export settings, one row), `scouting_events`,
-`scouting_form_versions` / `scouting_form_drafts`, `scouting_training_matches`, `scouting_practice_matches`,
-`robot_tickets` (Pit Crew), and the prediction game's `pm_*` and `prediction_market_bets` tables. `activity_log` keeps
+`scouting_form_versions` / `scouting_form_drafts` and `scouting_practice_matches`. The baseline schema also still has
+tables no page uses any more (`scout_match_deadlines`, `scouting_training_matches`, `robot_tickets`, `pm_*`,
+`prediction_market_bets`); they are left in place so an existing database keeps its rows. `activity_log` keeps
 an audit trail of changes to the main tables.
 
 ## Storage

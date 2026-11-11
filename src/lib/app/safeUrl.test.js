@@ -78,10 +78,6 @@ describe('safeInternalPath (XSS-04)', () => {
       }
     }
 
-    const friendsSrc = fs.readFileSync('src/routes/api/prediction-market-v2/friends/+server.js', 'utf8');
-    expect(friendsSrc).toContain('UUID_RE.test(String(actor.id');
-    expect(friendsSrc).toContain('UUID_RE.test(friendId)');
-
     const botSrc = fs.readFileSync('src/lib/server/integrations/slack.js', 'utf8');
     expect(botSrc).not.toContain('env.BOT_TOKEN');
     expect(botSrc).not.toContain('env.TOKEN');

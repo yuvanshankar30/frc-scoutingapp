@@ -23,8 +23,8 @@ npm run admin -- show
 | Logo | The menu, the sign-in page and the installed app icon (PNG, JPEG or WebP, up to 256 KB). Without one, the team number is shown in the brand color |
 | Brand color | Buttons, highlights, the active menu item and accents, in both themes (lighter and darker shades are worked out from it) |
 | Default theme | What new devices and people who haven't picked a theme see. Each person can switch for themselves |
-| Timezone | Match times, deadlines, "today" in exports, Slack reminders |
-| Pages in the menu | Hide optional pages: Pit Crew, Drive Team, Predictions, AI analytics, Blue Alliance, EPA. Hidden pages leave the menu; their addresses still work |
+| Timezone | Match times, "today" in exports, Slack reminders |
+| Pages in the menu | Hide optional pages: Drive Team, AI analytics, Blue Alliance, EPA. Hidden pages leave the menu; their addresses still work |
 | Let people create their own accounts | Shows or hides "Create an account" on the sign-in page (see [sign-in](../app/sign-in.md#creating-an-account)) |
 
 Changes take effect for everyone the next time they load the site (the server caches settings for 30 seconds).

@@ -26,20 +26,6 @@ export const SCOUTING_ADMIN_PAGES = [
     blurb: 'Who scouts what'
   },
   {
-    key: 'scouting-admin-training',
-    label: 'Training',
-    href: '/scouting-admin/training',
-    icon: 'GraduationCap',
-    blurb: 'Practice scouting on past matches'
-  },
-  {
-    key: 'scouting-admin-deadlines',
-    label: 'Deadlines',
-    href: '/scouting-admin/deadlines',
-    icon: 'CalendarClock',
-    blurb: 'When reports are due, and who is late'
-  },
-  {
     key: 'scouting-admin-edit',
     label: 'Edit',
     href: '/scouting-admin/edit',
@@ -155,13 +141,6 @@ export const NAV_GROUPS = [
     items: [
       { key: 'driveteam', label: 'Drive Team', href: '/driveteam', icon: 'Gamepad2', blurb: 'Our matches, up next' },
       {
-        key: 'pitcrew',
-        label: 'Pit Crew',
-        href: '/pitcrew',
-        icon: 'Wrench',
-        blurb: 'Log robot failures and validate fixes'
-      },
-      {
         key: 'picklist',
         label: 'Picklist',
         href: '/picklist',
@@ -174,8 +153,7 @@ export const NAV_GROUPS = [
         href: '/bluealliance',
         icon: 'Globe',
         blurb: 'Official event data'
-      },
-      { key: 'predictions', label: 'Predictions', href: '/predictions', icon: 'Dice5', blurb: 'Call the matches' }
+      }
     ]
   },
   {
@@ -207,8 +185,6 @@ const DRIVE_ROLES = [
   'drive team',
   'drive team mentor'
 ];
-const PIT_ROLES = ['pit lead', 'mechanical pit', 'electrical pit', 'software pit', 'pit coach', 'pit mentor'];
-const SCOUT_ROLES = ['data scout member', 'performance scout member', 'robot scout member', 'scouting lead'];
 
 /**
  * The phone bar for this person: Home, Scout, My Reports, then the page their competition role
@@ -225,7 +201,7 @@ export function bottomBarKeys(rosterKeys = [], hiddenFeatures = []) {
   );
   const has = (roles) => roles.some((role) => keys.has(role));
   const hidden = new Set(hiddenFeatures || []);
-  const preferred = has(DRIVE_ROLES) ? 'driveteam' : has(PIT_ROLES) && !has(SCOUT_ROLES) ? 'pitcrew' : 'strategy';
+  const preferred = has(DRIVE_ROLES) ? 'driveteam' : 'strategy';
   const last = hidden.has(preferred) ? 'strategy' : preferred;
   return ['home', 'matchscout', 'myscout', last];
 }
@@ -236,8 +212,7 @@ export const BOTTOM_BAR_LABELS = Object.freeze({
   matchscout: 'Scout',
   myscout: 'My Reports',
   strategy: 'Strategy',
-  driveteam: 'Drive',
-  pitcrew: 'Pit Crew'
+  driveteam: 'Drive'
 });
 
 /** Nav items for the bottom bar, in order. */

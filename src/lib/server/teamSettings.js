@@ -5,10 +5,15 @@ import { getSupabase } from '$lib/server/serviceClient.js';
 import { normalizeTeamSettings } from '$lib/app/teamSettings.js';
 import { setAppTimeZone } from '$lib/app/timezone.js';
 import { isCompetitionLead } from '$lib/scouting/competitionRoles.js';
+import { withTimeout } from '$lib/app/withTimeout.js';
 
 const MAX_LOGO_BYTES = 256 * 1024; // sent as base64 JSON, which must stay under the server's 512 KB body limit
 
 const CACHE_MS = 30_000;
+// A database that accepts the connection but never answers (a stopped local Supabase, a dead tunnel) would hold every
+// page load forever. Give up after this long and show the "not connected" screen instead.
+const READ_TIMEOUT_MS = 5000;
+const TIMED_OUT = { data: null, error: { message: 'The database did not answer in time.' } };
 let cached = null;
 let cachedAt = 0;
 
@@ -24,7 +29,11 @@ export async function loadTeamSettings({ fresh = false, db = null } = {}) {
   let result;
   try {
     const client = db || getSupabase();
-    const { data, error } = await client.from('app_settings').select(SETTINGS_COLUMNS).eq('id', 1).maybeSingle();
+    const { data, error } = await withTimeout(
+      client.from('app_settings').select(SETTINGS_COLUMNS).eq('id', 1).maybeSingle(),
+      READ_TIMEOUT_MS,
+      TIMED_OUT
+    );
     if (error) result = { settings: null, error: error.message || 'Could not read app_settings' };
     else result = { settings: normalizeTeamSettings(data), error: null };
   } catch (error) {

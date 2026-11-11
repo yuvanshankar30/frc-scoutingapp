@@ -124,3 +124,13 @@ export function tbaMatchLabel(match) {
   if (!match?.comp_level) return 'Match';
   return matchLabel(tbaMatchSuffix(match));
 }
+
+/** A match key from what a scout or a link supplies ("3", "qm3", "Qual 3" or the full key) under an event. */
+export function matchKeyFor(eventKey, raw) {
+  const text = String(raw || '').trim();
+  if (!text || !eventKey) return '';
+  if (text.includes('_')) return text;
+  if (/^(qm|qf|sf|f)\d/i.test(text)) return `${eventKey}_${text.toLowerCase()}`;
+  const digits = text.match(/\d+/)?.[0];
+  return digits ? `${eventKey}_qm${digits}` : '';
+}

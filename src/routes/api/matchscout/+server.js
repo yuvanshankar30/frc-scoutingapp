@@ -15,7 +15,7 @@ import {
   scoutObservation
 } from '$lib/scouting/pitProblemObservations.js';
 import { averagePowerRankings } from '$lib/scouting/powerRankingAverages.js';
-import { matchKeyFor } from '$lib/scouting/training.js';
+import { matchKeyFor } from '$lib/matches/matchKeys.js';
 import { tbaMatchLabel } from '$lib/matches/matchKeys.js';
 import { canonicalMatchKey, canonicalReports } from '$lib/matches/matchKeys.js';
 import { resolveScoutedBy, scoutDisplayName, scoutProfilesFor } from '$lib/server/scouting/scoutIdentity.js';
@@ -133,34 +133,11 @@ export async function GET({ request, url }) {
 
   const resource = url.searchParams.get('resource') || 'entries';
 
-  // The robots in one match, for the Performance tab's power ranking. A training match comes from its stored
-  // past match (with the video to watch); a real match comes from The Blue Alliance. An unknown match returns
+  // The robots in one match, for the Performance tab's power ranking, from The Blue Alliance. An unknown match returns
   // empty alliances, and the page lets the scout type the robots in instead.
   if (resource === 'match-teams') {
     const matchKey = matchKeyFor(eventKey, url.searchParams.get('match_key'));
     if (!matchKey) return json({ error: 'match_key is required' }, { status: 400, headers: NO_STORE_HEADERS });
-    const training = await db.from('scouting_training_matches').select('*').eq('match_key', matchKey).maybeSingle();
-    if (training.data) {
-      const row = training.data;
-      return json(
-        {
-          success: true,
-          data: {
-            match_key: matchKey,
-            red: row.red_team_keys,
-            blue: row.blue_team_keys,
-            training: {
-              source_event_key: row.source_event_key,
-              source_event_name: row.source_event_name,
-              source_match_key: row.source_match_key,
-              source_label: row.source_label,
-              video_key: row.video_key
-            }
-          }
-        },
-        { headers: NO_STORE_HEADERS }
-      );
-    }
     const match = await tbaJson(`/match/${encodeURIComponent(await tbaMatchKeyFor(matchKey))}/simple`);
     return json(
       {
@@ -169,8 +146,7 @@ export async function GET({ request, url }) {
           match_key: matchKey,
           red: match?.alliances?.red?.team_keys || [],
           blue: match?.alliances?.blue?.team_keys || [],
-          label: match ? tbaMatchLabel(match) : null,
-          training: null
+          label: match ? tbaMatchLabel(match) : null
         }
       },
       { headers: NO_STORE_HEADERS }

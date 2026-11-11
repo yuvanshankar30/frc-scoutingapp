@@ -19,7 +19,6 @@
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
   import DatePicker from '$lib/components/common/DatePicker.svelte';
   import FormEditor from '$lib/components/forms/FormEditor.svelte';
-  import ScoutDeadlines from '$lib/components/scouting/ScoutDeadlines.svelte';
   import ScoutDataBrowser from '$lib/components/scouting/ScoutDataBrowser.svelte';
   import TeamRankingDefensePanel from '$lib/components/scouting/TeamRankingDefensePanel.svelte';
   import MatchKeyReview from '$lib/components/scouting/MatchKeyReview.svelte';
@@ -27,7 +26,6 @@
   import AdminModelsPanel from '$lib/components/scouting/AdminModelsPanel.svelte';
   import AdminAddUser from '$lib/components/scouting/AdminAddUser.svelte';
   import TeamSettingsPanel from '$lib/components/settings/TeamSettingsPanel.svelte';
-  import TrainingPanel from '$lib/components/scouting/TrainingPanel.svelte';
   import TbaEventPicker from '$lib/components/scouting/TbaEventPicker.svelte';
   import { page } from '$app/stores';
   import { SCOUTING_ADMIN_PAGES } from '$lib/app/navigation.js';
@@ -1221,8 +1219,6 @@
         {#if activeAssignmentTab === 'prescout'}<PitAssignmentPanel assignmentKind="prescout" open={true} />{/if}
         {#if activeAssignmentTab === 'pit'}<PitAssignmentPanel open={true} />{/if}
       </div>
-    {:else if section === 'training'}
-      <TrainingPanel />
     {:else if section === 'edit'}
       <FormEditor />
     {:else if section === 'scouts'}
@@ -1526,8 +1522,6 @@
           >
         </section>
       </div>
-    {:else if section === 'deadlines'}
-      <ScoutDeadlines {eventKey} {matchReports} />
     {:else if section === 'extra'}
       <p class="sp-lede">Tools that are rarely needed. Nothing here is required to run an event.</p>
       <AdminModelsPanel
@@ -1647,7 +1641,6 @@
       <div class="card section-card">
         <div class="section-header">
           <h3>Missed Matches</h3>
-          <a href="/scouting-admin/deadlines">Set deadlines and see who is late</a>
         </div>
         {#if !missedMatches.length}
           <div class="empty-state compact-empty">No missed matches detected yet.</div>
