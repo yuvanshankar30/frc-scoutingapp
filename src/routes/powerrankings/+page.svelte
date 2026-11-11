@@ -292,7 +292,7 @@
   {#if officialNote}<p class="text-muted">⚠ {officialNote}</p>{/if}
 
   {#if $isPhone}
-    <!-- Phone (#124): the explainer folds away so the rankings come first. -->
+    <!-- Phone: the explainer folds away so the rankings come first. -->
     <details class="ph-key">
       <summary>What these numbers mean</summary>
       <section class="measure-key" aria-label="What each measure means">

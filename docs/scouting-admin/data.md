@@ -3,6 +3,18 @@
 CSV export and sheet sync, then the submitted reports browsed by team, match, scout, or what needs a look, including
 **Match numbers to review** (reports whose match box couldn't be converted to a match key).
 
+## Power rankings and defense
+
+A compact table, one row per robot, sortable by any column (cards on phones):
+- **Avg power rank:** the average place from Performance scouts' power rankings (1 = best) and matches ranked.
+- **Defense played (1–10):** the Data scouts' effectiveness rating when the robot played defense.
+- **Defense impact:** how much less the robots it defended scored than in their own undefended matches, so
+  ineffective defense shows as a small number even when nobody rated it.
+- **Defense resistance:** 10 minus the average rating of defense played against the robot.
+- **Scoring kept when defended:** its balls scored in defended matches over its undefended matches.
+
+Logic: `src/lib/scouting/defenseStats.js` and `src/lib/scouting/powerRankingAverages.js`.
+
 ## Scouting data export
 
 One sheet with every scouting record for the event, written for people to sort, filter and analyze:
@@ -24,8 +36,12 @@ text). The file is called `scouting-<event>.xlsx` / `.csv`.
   filled in for the event, and robot-condition defaults on Data and Performance reports, which didn't ask them.
 - **Excel tabs:**
   - **Teams:** one row per team with pit robot type and drivetrain, reports by kind, average balls, auto, shot
-    accuracy, BPS, driver skill and defense, average power rank place, matches with a problem, and no-shows. Sorted
+    accuracy, BPS (band and slider), driver skill and defense, defense played, impact, resistance and scoring kept when
+    defended, average power rank place, matches with a problem, and no-shows. Sorted
     by average balls; the top quarter's team numbers are green and the bottom quarter's red.
+  - Data reports include **Defended against**, **Defended while**, **Defense shifts** and **Defense effectiveness
+    (1-10)**; Performance reports **Balls per second (slider)**; Robot reports **Robot status by shift**, **Foul
+    nature** and **Foul details**.
   - **Data scouting**, **Performance scouting**, **Robot scouting**, **Pit scouting**, **Notes & pit problems:** each
     kind with only "Who, when" and its own questions. Tabs with no records are left out.
   - **All records:** everything together, for filtering across kinds.

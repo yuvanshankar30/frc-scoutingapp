@@ -96,7 +96,7 @@
 <svelte:head><title>My Scout</title></svelte:head>
 
 {#if $isPhone}
-  <!-- Phone (#124): one screen. Header, stats and tabs stay put; only the list inside the panel scrolls. -->
+  <!-- Phone: one screen. Header, stats and tabs stay put; only the list inside the panel scrolls. -->
   <div class="ph-my">
     <header class="ph-hello">
       <div>
@@ -495,7 +495,7 @@
     }
   }
 
-  /* Phone (#124): exactly one screen tall; only .ph-panel scrolls. */
+  /* Phone: exactly one screen tall; only .ph-panel scrolls. */
   .ph-my {
     height: var(--screen-avail);
     min-height: 24rem;
@@ -695,7 +695,7 @@
     color: var(--text);
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .assignment-type,
     .ph-roles,

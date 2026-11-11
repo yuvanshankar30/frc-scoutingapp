@@ -7,6 +7,7 @@ import {
   createLayout,
   createQuestion,
   emptyForm,
+  FORM_TYPES,
   sectionItems,
   describeDiff,
   diffForms,
@@ -174,11 +175,12 @@ describe('convertQuestion', () => {
 describe('built-in blocks', () => {
   it('puts ratings and intake speed on Performance, and the robot condition questions on Robot', () => {
     const keys = (section) => coreBlocksIn('match', section).map((entry) => entry.key);
-    expect(keys('teleop')).toEqual(['teleop.roles', 'teleop.balls', 'teleop.notes']);
+    expect(keys('teleop')).toEqual(['teleop.roles', 'teleop.balls', 'teleop.defense', 'teleop.notes']);
     expect(keys('auto')).not.toContain('auto.collision');
-    expect(keys('performance')).toEqual(
-      expect.arrayContaining(['teleop.ratings', 'teleop.extraRatings', 'teleop.intake'])
-    );
+    expect(keys('performance')).toEqual(expect.arrayContaining(['teleop.ratings', 'performance.bps', 'teleop.intake']));
+    // driver awareness, defense, reliability, offense and defense ratings are no longer asked.
+    for (const removed of ['teleop.extraRatings', 'performance.offense', 'performance.defense'])
+      expect(keys('performance')).not.toContain(removed);
     expect(keys('robot')).toEqual(
       expect.arrayContaining([
         'teleop.status',
@@ -242,9 +244,36 @@ describe('built-in blocks', () => {
     expect(layout.help('teleop.balls')).toContain('suggested range');
     expect(coreView(form, { key: 'teleop.notes', label: 'Real-scout observations', help: null }).renamed).toBe(true);
   });
-  it('treats the pit sections as their own set of blocks', () => {
-    const items = sectionItems(emptyForm(), 'pit', 'extra').map((item) => item.id);
-    expect(items).toContain(coreId('extra.electrical'));
+  it('gives pit scouting a single Main section', () => {
+    expect(FORM_TYPES.pit.sections.map((section) => section.id)).toEqual(['main']);
+    expect(sectionItems(emptyForm(), 'pit', 'extra')).toEqual([]);
     expect(sectionItems(emptyForm(), 'pit', 'teleop')).toEqual([]);
+  });
+  it('lays the pit Main tab out with every question on one page', () => {
+    expect(sectionItems(emptyForm(), 'pit', 'main').map((item) => item.block.key)).toEqual([
+      'main.drivebase',
+      'main.dimensions',
+      'main.weight',
+      'main.trench',
+      'main.shooter',
+      'main.bps',
+      'main.autos',
+      'main.autoPoints',
+      'main.roles',
+      'main.strengths',
+      'main.weaknesses',
+      'main.breaker',
+      'main.controls',
+      'main.contact',
+      'main.notes'
+    ]);
+  });
+  it('moves questions added to the old pit Extra tab onto Main instead of dropping them', () => {
+    const form = sanitizeForm(
+      { questions: [{ id: 'q_old', section: 'extra', type: 'text', label: 'Old extra question' }] },
+      'pit'
+    );
+    expect(form.questions).toEqual([expect.objectContaining({ id: 'q_old', section: 'main' })]);
+    expect(sectionItems(form, 'pit', 'main').at(-1).id).toBe('q_old');
   });
 });

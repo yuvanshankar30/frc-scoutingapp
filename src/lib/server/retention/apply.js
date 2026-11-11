@@ -1,4 +1,4 @@
-// Runs an approved cleanup plan (#125) in batches and writes one summary row to activity_log. Only the items of the
+// Runs an approved cleanup plan in batches and writes one summary row to activity_log. Only the items of the
 // plan are touched; every query repeats the plan's scope (event and season rule).
 import { escapeMatchKeyPrefix } from '$lib/scouting/eventCode.js';
 import { RETENTION_POLICY } from './policy.js';

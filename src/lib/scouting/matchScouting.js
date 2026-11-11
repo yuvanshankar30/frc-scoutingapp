@@ -16,6 +16,93 @@ export const AUTO_FUEL_SOURCES = Object.freeze(['Neutral Zone', 'Outpost', 'Depo
 export const ACCURACY_LABELS = Object.freeze(['0–20%', '>20–50%', '>50–75%', '>75–85%', '>85–100%']);
 export const BPS_LABELS = Object.freeze(['0–5 BPS', '>5–10 BPS', '>10–20 BPS', '>20–30 BPS', '>30 BPS']);
 
+// section_fields 4: defense details on Data, the BPS slider and every Performance answer required, and
+// robot status per shift, break details and foul nature on Robot. Older pages and offline queues still save.
+export const SECTION_FIELDS = 4;
+const currentSections = (body) => Number(body?.section_fields) >= SECTION_FIELDS;
+
+/** The five stretches of teleop a status or defense answer can name. */
+export const MATCH_SHIFTS = Object.freeze([
+  Object.freeze({ key: 'shift1', label: 'Shift 1' }),
+  Object.freeze({ key: 'shift2', label: 'Shift 2' }),
+  Object.freeze({ key: 'shift3', label: 'Shift 3' }),
+  Object.freeze({ key: 'shift4', label: 'Shift 4' }),
+  Object.freeze({ key: 'endgame', label: 'Endgame' })
+]);
+export const MATCH_SHIFT_KEYS = Object.freeze(MATCH_SHIFTS.map((shift) => shift.key));
+// Whether the defending robot's own hub was active or inactive while it played defense.
+export const DEFENSE_PERIODS = Object.freeze(['active', 'inactive']);
+export const DEFENSE_EFFECTIVENESS_MAX = 10;
+export const ROBOT_SHIFT_STATUSES = Object.freeze(['active', 'dead', 'stopped']);
+export const FOUL_NATURES = Object.freeze([
+  'Contact / pinning',
+  'Contact inside frame perimeter',
+  'Too much fuel held',
+  'Protected zone violation',
+  'Extension beyond limits',
+  'Field damage',
+  'Endgame / tower interference',
+  'Other'
+]);
+
+// BPS is now an exact slider reading; the 1-5 bucket it falls in still goes into ratings.BPS for older analytics.
+export const BPS_SLIDER_MAX = 40;
+export function bpsBucket(bps) {
+  const value = Number(bps);
+  if (bps === null || bps === '' || !Number.isFinite(value) || value < 0) return 0;
+  if (value <= 5) return 1;
+  if (value <= 10) return 2;
+  if (value <= 20) return 3;
+  if (value <= 30) return 4;
+  return 5;
+}
+
+/** The worst status across the shifts, for everything that still reads a single teleop_robot_status. */
+export function overallRobotStatus(shifts) {
+  const values = MATCH_SHIFT_KEYS.map((key) => shifts?.[key]).filter(Boolean);
+  if (!values.length) return '';
+  if (values.includes('dead')) return 'dead';
+  if (values.includes('stopped')) return 'stopped';
+  return 'active';
+}
+
+/**
+ * A team key inside a ranking, where offseason B teams can appear: TBA names them with a one-letter suffix
+ * (`frc4414B`). Returns the TBA form (number plus an upper-case letter) so it matches the match's own team keys.
+ * For rankings and defense targets: the scouting tables' team_key columns still accept plain numbers only (is_frc_team_key).
+ */
+export function normalizeRankedTeamKey(value) {
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^frc/, '');
+  const match = /^(\d{1,5})([a-z]?)$/.exec(text);
+  return match ? `frc${match[1]}${match[2].toUpperCase()}` : null;
+}
+
+/** The defense answers a Data scout gives once Defense is picked as a role, cleaned; null when there are none. */
+export function normalizeDefense(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const list = (raw, allowed) => [...new Set((Array.isArray(raw) ? raw : []).filter((entry) => allowed(entry)))];
+  const targets = list((Array.isArray(value.targets) ? value.targets : []).map(normalizeRankedTeamKey), Boolean).slice(
+    0,
+    3
+  );
+  const periods = list(value.periods, (entry) => DEFENSE_PERIODS.includes(entry));
+  const shifts = list(value.shifts, (entry) => MATCH_SHIFT_KEYS.includes(entry));
+  const effectiveness = Number(value.effectiveness);
+  const cleaned = {
+    targets,
+    periods,
+    shifts,
+    effectiveness:
+      Number.isInteger(effectiveness) && effectiveness >= 1 && effectiveness <= DEFENSE_EFFECTIVENESS_MAX
+        ? effectiveness
+        : null
+  };
+  return targets.length || periods.length || shifts.length || cleaned.effectiveness ? cleaned : null;
+}
+
 /** The required Data scouting answers: preload, teleop roles and balls scored. */
 // A robot that never showed up has nothing else to report: "No" on robot_present makes every other answer optional.
 export const robotNoShow = (body) => body?.robot_present === false;
@@ -30,12 +117,40 @@ export function validateMatchScoutForm(body) {
   const balls = parseAutoPointsEstimate(body.balls_scored_band);
   if (!balls || !Number.isInteger(balls.min) || (balls.max !== null && !Number.isInteger(balls.max)))
     return 'Enter balls scored as a whole number, range, or lower bound.';
+  if (currentSections(body) && body.teleop_roles.includes('Defense')) return validateDefense(body);
   return null;
 }
 
-/** The required Performance scouting answers: shot accuracy and BPS, each rated or deliberately left unjudged. */
+/** A robot that played defense: who it defended, when, how well, and the scout's description of it. */
+export function validateDefense(body) {
+  const defense = normalizeDefense(body.defense);
+  if (!defense?.targets.length) return 'Select the robots it defended against.';
+  if (!defense.periods.length) return 'Select whether it defended while its hub was active or inactive.';
+  if (!defense.shifts.length) return 'Select the shifts it played defense in.';
+  if (!defense.effectiveness) return `Rate how effective the defense was from 1 to ${DEFENSE_EFFECTIVENESS_MAX}.`;
+  if (!String(body.teleop_notes || '').trim()) return 'Describe the defense in Real-scout observations.';
+  return null;
+}
+
+/**
+ * The required Performance scouting answers. Since section_fields 4 every answer is required: shot accuracy, the
+ * BPS slider, intake speed, driver skill, the power ranking and the notes. Older reports rate shot accuracy and BPS,
+ * each rated or deliberately left unjudged.
+ */
 export function validatePerformanceRatings(body) {
   if (robotNoShow(body)) return null;
+  if (currentSections(body)) {
+    const accuracy = body.ratings?.['Shot accuracy'];
+    if (!Number.isInteger(accuracy) || accuracy < 1 || accuracy > 5) return 'Rate Shot accuracy.';
+    const bps = Number(body.bps);
+    if (body.bps === null || body.bps === '' || body.bps === undefined || !Number.isFinite(bps) || bps < 0)
+      return 'Set balls per second with the slider.';
+    if (![1, 2, 3].includes(Number(body.intake_speed))) return 'Rate intake speed.';
+    if (![1, 2, 3, 4, 5].includes(Number(body.driver_skill))) return 'Rate driver skill.';
+    if (!body.power_ranking || !Object.keys(body.power_ranking).length) return 'Rank the robots you watched.';
+    if (!String(body.performance_notes || '').trim()) return 'Write your notes about performance.';
+    return null;
+  }
   for (const field of MATCH_FORM_RATING_FIELDS) {
     const rating = body.ratings?.[field];
     const unknown = body.ratings_unknown?.includes(field);
@@ -54,8 +169,19 @@ export function validateRobotCondition(body) {
     return 'Select what the robot crashed into.';
   if (body.significant_crash && body.crash_target === 'other' && !String(body.crash_details || '').trim())
     return 'Describe the other crash target.';
-  if (!['active', 'dead', 'stopped', 'brownout', 'unknown'].includes(body.teleop_robot_status))
+  if (currentSections(body)) {
+    const missing = MATCH_SHIFTS.find((shift) => !ROBOT_SHIFT_STATUSES.includes(body.robot_status_shifts?.[shift.key]));
+    if (missing) return `Select the robot status for ${missing.label}.`;
+  } else if (!['active', 'dead', 'stopped', 'brownout', 'unknown'].includes(body.teleop_robot_status))
     return 'Select the robot status.';
+  if (currentSections(body)) {
+    if (body.mechanical_break === true && !String(body.break_details || '').trim())
+      return 'Record what broke on the robot.';
+    if ((Number(body.fouls_minor) || 0) + (Number(body.fouls_major) || 0) > 0) {
+      if (!FOUL_NATURES.includes(body.foul_nature)) return 'Select the nature of the foul.';
+      if (body.foul_nature === 'Other' && !String(body.foul_details || '').trim()) return 'Describe the foul.';
+    }
+  }
   return null;
 }
 

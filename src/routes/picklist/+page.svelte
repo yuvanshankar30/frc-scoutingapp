@@ -8,7 +8,13 @@
   import { fetchWithCache } from '$lib/app/offlineCache.js';
   import { fetchActiveScoutingEventKey, fetchAvailableScoutingEvents } from '$lib/scouting/scoutingEvent.js';
   import { buildStrategyRows } from '$lib/scouting/strategyScouting.js';
-  import { buildPowerRankings, DEFAULT_SCOUT_POWER_WEIGHTS } from '$lib/scouting/scoutingStats.js';
+  import {
+    applyPairwiseConsensus,
+    blendMatchRankings,
+    buildPowerRankings,
+    DEFAULT_SCOUT_POWER_WEIGHTS,
+    matchRankingsToPairwiseVotes
+  } from '$lib/scouting/scoutingStats.js';
   import { buildPicklistInsights } from '$lib/scouting/picklistInsights.js';
   import { ourTeamKey } from '$lib/stores/team.js';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
@@ -25,6 +31,9 @@
   // The list is one shared list per event (every scout sees and edits the same
   // order). It refreshes quietly so an edit made on another phone shows up here.
   const PICKLIST_REFRESH_MS = 30000;
+  // The scores and match rankings behind the columns and the auto rank refresh too, so new reports and rankings
+  // show up without reloading the page. The list order itself only changes when someone drags or replaces it.
+  const SCORES_REFRESH_MS = 60000;
   let eventKey = '';
   let selectedEventKey = null;
   let availableEvents = [];
@@ -47,11 +56,16 @@
   let lastSyncedAt = null;
   let noteDrafts = {};
   let stopRefresh = () => {};
+  let stopScoresRefresh = () => {};
+  let matchRankings = [];
+  let rankingsNote = '';
   let sliderWeights = {
     performance: DEFAULT_SCOUT_POWER_WEIGHTS.performance * 100,
     notes: DEFAULT_SCOUT_POWER_WEIGHTS.notes * 100,
     reliability: DEFAULT_SCOUT_POWER_WEIGHTS.reliability * 100,
-    opr: DEFAULT_SCOUT_POWER_WEIGHTS.opr * 100
+    opr: DEFAULT_SCOUT_POWER_WEIGHTS.opr * 100,
+    // The match-ranking consensus (Match Rankings tab), blended on top of Scout Power by blendMatchRankings().
+    rankings: 30
   };
 
   $: resolvedEventKey = selectedEventKey || eventKey;
@@ -69,35 +83,44 @@
     }
   );
   $: scoutPowerByTeam = new Map(powerRankings.map((team) => [team.key, team.scoutPower]));
+  $: rankedPower = applyPairwiseConsensus(powerRankings, matchRankingsToPairwiseVotes(matchRankings));
   $: insights = buildPicklistInsights({
     strategyRows: rows,
-    powerRankings,
+    powerRankings: rankedPower,
     officialRankings,
     ourTeamKey: OUR_TEAM_KEY
   });
   $: normalizedSliderWeights = (() => {
-    const total = sliderWeights.performance + sliderWeights.notes + sliderWeights.reliability + sliderWeights.opr;
-    if (!total) return DEFAULT_SCOUT_POWER_WEIGHTS;
+    const total =
+      sliderWeights.performance +
+      sliderWeights.notes +
+      sliderWeights.reliability +
+      sliderWeights.opr +
+      sliderWeights.rankings;
+    if (!total) return { ...DEFAULT_SCOUT_POWER_WEIGHTS, rankings: 0 };
     return {
       performance: sliderWeights.performance / total,
       notes: sliderWeights.notes / total,
       reliability: sliderWeights.reliability / total,
-      opr: sliderWeights.opr / total
+      opr: sliderWeights.opr / total,
+      rankings: sliderWeights.rankings / total
     };
   })();
-  $: autoRankedRows = buildPowerRankings(
-    rows.map((row) => ({ key: row.teamKey, team_number: Number(row.teamNumber) || 0, nickname: '' })),
-    report?.data?.data_events || [],
-    report?.data?.notes || [],
-    {
-      pitEntries: report?.data?.pit_entries || [],
-      problemReports: report?.data?.pit_problems || [],
-      matchEntries: report?.data?.match_entries || []
-    },
-    normalizedSliderWeights
-  )
-    .slice()
-    .sort((a, b) => (b.scoutPower ?? -1) - (a.scoutPower ?? -1));
+  $: autoRankedRows = blendMatchRankings(
+    buildPowerRankings(
+      rows.map((row) => ({ key: row.teamKey, team_number: Number(row.teamNumber) || 0, nickname: '' })),
+      report?.data?.data_events || [],
+      report?.data?.notes || [],
+      {
+        pitEntries: report?.data?.pit_entries || [],
+        problemReports: report?.data?.pit_problems || [],
+        matchEntries: report?.data?.match_entries || []
+      },
+      normalizedSliderWeights
+    ),
+    matchRankings,
+    normalizedSliderWeights.rankings
+  );
   $: if (resolvedEventKey && resolvedEventKey !== loadedPicklistEventKey && !picklistLoading) void loadPicklist();
 
   // Real team names: the event roster first, then a per-team TBA lookup for
@@ -347,6 +370,43 @@
     }
   }
 
+  // The scouting report and match rankings behind the scores.
+  async function fetchScores(forEventKey) {
+    const headers = await getAuthHeader();
+    const event = encodeURIComponent(forEventKey);
+    const [reportResponse, rankingsPayload] = await Promise.all([
+      fetch(`/api/scouting-report?event_key=${event}`, { headers }),
+      fetch(`/api/scouting-match-rankings?event_key=${event}`, { headers })
+        .then((response) => response.json())
+        .catch(() => null)
+    ]);
+    const payload = await reportResponse.json().catch(() => null);
+    if (!reportResponse.ok || !payload?.success) throw new Error(payload?.error || 'Could not load scouting data.');
+    const rankingsOk = rankingsPayload?.success;
+    return {
+      report: payload,
+      matchRankings: rankingsOk ? rankingsPayload.data || [] : [],
+      rankingsNote: rankingsOk
+        ? ''
+        : rankingsPayload?.error || 'Match rankings are unavailable right now, so the auto rank leaves them out.'
+    };
+  }
+
+  // Background refresh of the scores and match rankings, so the columns and the auto rank follow new reports.
+  async function refreshScoresQuietly() {
+    const forEventKey = resolvedEventKey;
+    if (!forEventKey || loading || !report) return;
+    try {
+      const scores = await fetchScores(forEventKey);
+      if (forEventKey !== resolvedEventKey || loading) return;
+      report = scores.report;
+      matchRankings = scores.matchRankings;
+      rankingsNote = scores.rankingsNote;
+    } catch {
+      // Background refresh only - the scores on screen are still valid.
+    }
+  }
+
   async function loadPicklistPage() {
     if (!resolvedEventKey) {
       report = null;
@@ -357,10 +417,9 @@
     error = '';
     teamsWarning = '';
     try {
-      const authHeaders = await getAuthHeader();
       officialNote = '';
-      const [response] = await Promise.all([
-        fetch(`/api/scouting-report?event_key=${encodeURIComponent(resolvedEventKey)}`, { headers: authHeaders }),
+      const [scores] = await Promise.all([
+        fetchScores(resolvedEventKey),
         // Official qualification standings, to show which teams rank above us.
         // Reference only: a TBA outage must not hide the picklist itself.
         fetchWithCache(`/api/tba/event-rankings?event_key=${encodeURIComponent(resolvedEventKey)}`, {
@@ -388,12 +447,13 @@
           teamsWarning = 'Could not load the event roster from The Blue Alliance.';
         })
       ]);
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success) throw new Error(payload?.error || 'Could not load scouting data.');
-      report = payload;
+      report = scores.report;
+      matchRankings = scores.matchRankings;
+      rankingsNote = scores.rankingsNote;
       loadedEventKey = resolvedEventKey;
     } catch (cause) {
       report = null;
+      matchRankings = [];
       eventTeams = [];
       error = cause?.message || 'Could not load scouting data.';
     } finally {
@@ -404,10 +464,14 @@
 
   onMount(async () => {
     stopRefresh = visibleInterval(refreshPicklistQuietly, PICKLIST_REFRESH_MS); // paused while the tab is hidden
+    stopScoresRefresh = visibleInterval(refreshScoresQuietly, SCORES_REFRESH_MS);
     [eventKey, availableEvents] = await Promise.all([fetchActiveScoutingEventKey(), fetchAvailableScoutingEvents()]);
     await loadPicklistPage();
   });
-  onDestroy(() => stopRefresh());
+  onDestroy(() => {
+    stopRefresh();
+    stopScoresRefresh();
+  });
 
   $: if (resolvedEventKey && resolvedEventKey !== loadedEventKey && !loading) void loadPicklistPage();
 </script>
@@ -452,6 +516,7 @@
 {:else}
   {#if teamsWarning}<p class="notice">{teamsWarning}</p>{/if}
   {#if officialNote}<p class="notice">{officialNote}</p>{/if}
+  {#if rankingsNote}<p class="notice">{rankingsNote}</p>{/if}
 
   <div class="layout">
     <section class="board" aria-label="Picklist">
@@ -473,6 +538,7 @@
           <span></span><span>#</span><span>Team</span>
           <span class="num">Event</span>
           <span class="num">Power</span>
+          <span class="num">Match</span>
           <span class="num hide-sm">Skill</span>
           <span class="num hide-sm">Driving</span>
           <span class="num">Broken</span>
@@ -503,6 +569,11 @@
               <span class="num" data-label="Event">{insight ? rankLabel(insight.officialRank) : '-'}</span>
               <span class="num" data-label="Power"
                 >{insight ? rankLabel(insight.powerRank) : '-'}{#if insight}<small>{number(insight.scoutPower)}</small
+                  >{/if}</span
+              >
+              <span class="num" data-label="Match"
+                >{insight ? rankLabel(insight.matchRank) : '-'}{#if insight?.matchRankVotes}<small
+                    >{insight.matchRankVotes}</small
                   >{/if}</span
               >
               <span class="num hide-sm" data-label="Skill">{insight ? number(insight.driverSkill) : '-'}</span>
@@ -538,9 +609,11 @@
           {/each}
         </ul>
         <p class="col-notes">
-          <b>Event</b> official qualification rank · <b>Power</b> our scouting power rank (score) · <b>Skill</b> average
-          driver skill · <b>Driving</b> average driving rank (1 bad, 3 great) · <b>Broken</b> matches where the robot
-          crashed, broke or was disabled · <b>Issues</b> unresolved pit problems · <b>Scouted</b> matches our scouts covered
+          <b>Event</b> official qualification rank · <b>Power</b> our scouting power rank (score) · <b>Match</b> place
+          in the match-ranking consensus (head-to-heads counted) · <b>Skill</b> average driver skill · <b>Driving</b>
+          average driving rank (1 bad, 3 great) · <b>Broken</b> matches where the robot crashed, broke or was disabled ·
+          <b>Issues</b>
+          unresolved pit problems · <b>Scouted</b> matches our scouts covered
         </p>
       {/if}
     </section>
@@ -585,13 +658,22 @@
               bind:value={sliderWeights.opr}
             /></label
           >
+          <label
+            ><span>Match rankings</span><b>{Math.round(normalizedSliderWeights.rankings * 100)}</b><input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              bind:value={sliderWeights.rankings}
+            /></label
+          >
         </div>
         <ol class="ranked">
           {#each autoRankedRows as team (team.key)}
             <li>
               <a href={teamHref(team.key)}>{team.team_number}</a><span class="tname"
                 >{nameByTeam.get(team.key) || ''}</span
-              ><small>{number(team.scoutPower)}</small>
+              ><small>{number(team.autoScore)}</small>
             </li>
           {/each}
         </ol>
@@ -689,8 +771,8 @@
     display: grid;
     /* Stat columns are sized to fit their header label ("Driving", "Scouted") so labels never run together. */
     grid-template-columns:
-      1.5rem 1.8rem minmax(10rem, 1.6fr) 3.6rem 4.6rem 3.2rem 4.2rem 4rem 3.6rem 4.2rem minmax(7rem, 1fr)
-      1.8rem;
+      1.5rem 1.8rem minmax(10rem, 1.6fr) 3.6rem 4.6rem 4.2rem 3.2rem 4.2rem 4rem 3.6rem 4.2rem
+      minmax(7rem, 1fr) 1.8rem;
     align-items: center;
     gap: var(--space-2);
     padding: 0 var(--space-3);
@@ -899,7 +981,9 @@
     }
     .cols,
     .row {
-      grid-template-columns: 1.5rem 1.8rem minmax(10rem, 1.6fr) 3.6rem 4.6rem 3.2rem 4.2rem 4rem 3.6rem 4.2rem 1.8rem;
+      grid-template-columns:
+        1.5rem 1.8rem minmax(10rem, 1.6fr)
+        3.6rem 4.6rem 4.2rem 3.2rem 4.2rem 4rem 3.6rem 4.2rem 1.8rem;
     }
   }
   /* The auto-rank panel moves under the board before the board gets too narrow for its columns. */
@@ -911,7 +995,7 @@
       position: static;
     }
   }
-  /* Phone (#124): each team is a card. Top line: drag grip, position, team, remove. Then every stat
+  /* Phone: each team is a card. Top line: drag grip, position, team, remove. Then every stat
      as a labelled chip (none are hidden any more), then the note. */
   @media (max-width: 700px) {
     .cols {
@@ -941,8 +1025,11 @@
       font-family: var(--font-mono);
       font-weight: 600;
     }
+    /* The min-width leaves no room for a stat chip on the top line, so the chips always start below the team
+       instead of squeezing its name into a sliver. */
     .team {
       flex: 1 1 0;
+      min-width: 9rem;
       font-size: 1.05rem;
     }
     .team a {
@@ -991,7 +1078,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .tname {
       white-space: normal;

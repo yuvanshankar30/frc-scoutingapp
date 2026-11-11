@@ -105,7 +105,7 @@
     height: auto;
     overflow: visible;
   }
-  /* Phones (#124): a smaller plot so the numbers around it stay on screen. */
+  /* Phones: a smaller plot so the numbers around it stay on screen. */
   @media (max-width: 640px) {
     svg {
       width: min(100%, 17rem);

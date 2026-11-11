@@ -9,6 +9,7 @@ import {
   MAX_AUTO_DESCRIPTION_LENGTH,
   MAX_AUTO_NAME_LENGTH,
   MAX_AUTO_OPTIONS,
+  MAX_DRIVEBASE_LENGTH,
   normalizeAutoPath,
   normalizeClimbOptions,
   normalizeTechnicalDetails
@@ -175,7 +176,7 @@ export async function POST({ request }) {
       return json({ error: 'Invalid team_key' }, { status: 400, headers: PRIVATE_HEADERS });
     }
 
-    const drivebase_type = body?.drivebase_type || null;
+    const drivebase_type = sanitizeLongText(body?.drivebase_type, MAX_DRIVEBASE_LENGTH) || null;
     const shooter_type = body?.shooter_type || null;
     const hopper_type = body?.hopper_type || null;
     const human_player_balls_in_auto = body?.human_player_balls_in_auto || null;

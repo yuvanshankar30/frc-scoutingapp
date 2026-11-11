@@ -1,4 +1,4 @@
-import { normalizeTeamKey } from './matchScoutingSchema.js';
+import { normalizeRankedTeamKey } from './matchScoutingSchema.js';
 
 function text(value, maxLength) {
   const normalized = String(value ?? '').trim();
@@ -12,7 +12,7 @@ export function normalizeMatchRanking(body, actorId) {
   const event_key = text(body?.event_key, 60);
   const match_key = text(body?.match_key, 120);
   const rawTeams = Array.isArray(body?.ranked_team_keys) ? body.ranked_team_keys : [];
-  const ranked_team_keys = rawTeams.map(normalizeTeamKey).filter(Boolean);
+  const ranked_team_keys = rawTeams.map(normalizeRankedTeamKey).filter(Boolean);
 
   if (!event_key) return { value: null, error: 'event_key is required' };
   if (!match_key) return { value: null, error: 'match_key is required' };

@@ -540,7 +540,7 @@
     }
   }
 
-  /* Desktop (#124): log a failure beside the validation queue. */
+  /* Desktop: log a failure beside the validation queue. */
   .pc-columns {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -552,7 +552,7 @@
       grid-template-columns: 1fr;
     }
   }
-  /* Phone (#124) */
+  /* Phone */
   @media (max-width: 900px) {
     .pitcrew .sp-lede {
       display: none;

@@ -21,7 +21,15 @@
     MATCH_FORM_ROLES as TELEOP_ROLES,
     AUTO_FUEL_SOURCES,
     ACCURACY_LABELS,
-    BPS_LABELS,
+    BPS_SLIDER_MAX,
+    DEFENSE_EFFECTIVENESS_MAX,
+    DEFENSE_PERIODS,
+    FOUL_NATURES,
+    MATCH_SHIFTS,
+    SECTION_FIELDS,
+    bpsBucket,
+    normalizeRankedTeamKey,
+    overallRobotStatus,
     validateMatchScoutForm,
     validatePerformanceRatings,
     validateRobotCondition,
@@ -49,6 +57,7 @@
     Minus,
     Plus,
     Route,
+    Shield,
     Shuffle,
     Timer,
     Trophy,
@@ -66,7 +75,6 @@
 
   const START_POSITIONS = ['left trench', 'left mound', 'center', 'right mound', 'right trench'];
   const RATING_FIELDS = [...MATCH_FORM_RATING_FIELDS, ...MATCH_OPTIONAL_RATING_FIELDS];
-  const TELEOP_RATING_FIELDS = MATCH_FORM_RATING_FIELDS;
   const BALL_SOURCE_OPTIONS = AUTO_FUEL_SOURCES.map((source) => [source, source]);
   const AUTO_POINTS_SLIDER_MAX = 500;
 
@@ -172,8 +180,6 @@
   let shuttleBand = '';
   let shuttleRating = 0;
   let shuttleNotes = '';
-  let offenseRating = 0;
-  let defenseRating = 0;
   let performanceNotes = '';
   let powerRanking = {};
   let rankingSkipped = [];
@@ -182,6 +188,25 @@
   let breakDetails = '';
   let breakImpact = '';
   let breakResponse = '';
+  // Data: who the robot defended, when (its hub active/inactive, which shifts) and how well (1-10).
+  let defenseTargets = [];
+  let defensePeriods = [];
+  let defenseShifts = [];
+  let defenseEffectiveness = 0;
+  let defenseTargetInput = '';
+  // Performance: balls per second from a slider (null until the scout moves it). Robot: status for every shift,
+  // and what kind of foul it was.
+  let bps = null;
+  let robotShiftStatus = {};
+  let foulNature = '';
+  let foulDetails = '';
+  // The robot status every older reader uses is the worst status across the shifts.
+  $: if (Object.keys(robotShiftStatus).length) teleopRobotStatus = overallRobotStatus(robotShiftStatus);
+  $: playedDefense = teleopRoles.includes('Defense');
+  $: hasFouls = (foulsMinor || 0) + (foulsMajor || 0) > 0;
+  // The robots it could have defended: the other alliance, or whatever the scout types when the schedule is missing.
+  $: opponents = (alliance === 'red' ? matchTeams.blue : matchTeams.red) || [];
+  $: defenseChoices = [...new Set([...opponents, ...defenseTargets])];
   // The robots in this match (for the power ranking) and, for a training match, the past match being watched.
   let matchTeams = { red: [], blue: [], training: null };
   let matchTeamsLoading = false;
@@ -317,8 +342,6 @@
     shuttleBand = '';
     shuttleRating = 0;
     shuttleNotes = '';
-    offenseRating = 0;
-    defenseRating = 0;
     performanceNotes = '';
     powerRanking = {};
     rankingSkipped = [];
@@ -327,6 +350,15 @@
     breakDetails = '';
     breakImpact = '';
     breakResponse = '';
+    defenseTargets = [];
+    defensePeriods = [];
+    defenseShifts = [];
+    defenseEffectiveness = 0;
+    defenseTargetInput = '';
+    bps = null;
+    robotShiftStatus = {};
+    foulNature = '';
+    foulDetails = '';
     selectPhase('prematch');
   }
 
@@ -348,7 +380,28 @@
   function toggleTeleopRole(role) {
     teleopRolesNone = false;
     teleopRoles = teleopRoles.includes(role) ? teleopRoles.filter((entry) => entry !== role) : [...teleopRoles, role];
+    // A robot seen shuttling did shuttle: the Shuttling tab starts at Yes.
+    if (role === 'Shuttler' && teleopRoles.includes(role)) shuttled = true;
   }
+
+  const toggleIn = (list, value) => (list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value]);
+
+  function addDefenseTarget() {
+    // Keeps a B team's letter (4414B), like TBA's keys, so the target matches the schedule.
+    const key = normalizeRankedTeamKey(defenseTargetInput.replace(/\s/g, ''));
+    if (key && !defenseTargets.includes(key) && defenseTargets.length < 3) defenseTargets = [...defenseTargets, key];
+    defenseTargetInput = '';
+  }
+
+  const defenseAnswer = () =>
+    playedDefense
+      ? {
+          targets: defenseTargets,
+          periods: defensePeriods,
+          shifts: defenseShifts,
+          effectiveness: defenseEffectiveness || null
+        }
+      : null;
 
   function toggleRating(field, value) {
     const next = ratings[field] === value ? 0 : value;
@@ -365,18 +418,40 @@
       preload,
       teleop_roles: teleopRoles,
       teleop_roles_none: teleopRolesNone,
-      balls_scored_band: ballsScored
+      balls_scored_band: ballsScored,
+      section_fields: SECTION_FIELDS,
+      defense: defenseAnswer(),
+      teleop_notes: teleopNotes
     };
   }
 
-  const ratingAnswers = () => ({ robot_present: robotPresent, ratings, ratings_unknown: ratingsUnknown });
+  // Shot accuracy plus the BPS slider, whose 1-5 bucket keeps the older BPS rating filled in.
+  const ratingAnswers = () => ({
+    robot_present: robotPresent,
+    section_fields: SECTION_FIELDS,
+    ratings: { 'Shot accuracy': ratings['Shot accuracy'] || 0, ...(bps === null ? {} : { BPS: bpsBucket(bps) }) },
+    ratings_unknown: [],
+    bps,
+    intake_speed: intakeSpeed || null,
+    driver_skill: driverSkill || null,
+    power_ranking: powerRanking,
+    performance_notes: performanceNotes
+  });
 
   const conditionAnswers = () => ({
     robot_present: robotPresent,
     significant_crash: significantCrash,
     crash_target: crashTarget,
     crash_details: crashDetails,
-    teleop_robot_status: teleopRobotStatus
+    teleop_robot_status: teleopRobotStatus,
+    section_fields: SECTION_FIELDS,
+    robot_status_shifts: robotShiftStatus,
+    mechanical_break: mechanicalBreak,
+    break_details: breakDetails,
+    fouls_minor: foulsMinor,
+    fouls_major: foulsMajor,
+    foul_nature: hasFouls ? foulNature : '',
+    foul_details: hasFouls ? foulDetails : ''
   });
 
   function continueFromTeleop() {
@@ -698,8 +773,6 @@
       shuttleBand = entry.shuttle_band || '';
       shuttleRating = entry.shuttle_rating || 0;
       shuttleNotes = entry.shuttle_notes || '';
-      offenseRating = entry.offense_rating || 0;
-      defenseRating = entry.defense_rating || 0;
       performanceNotes = entry.performance_notes || '';
       powerRanking = { ...(entry.power_ranking || {}) };
       foulsMinor = entry.fouls_minor ?? null;
@@ -707,6 +780,14 @@
       breakDetails = entry.break_details || '';
       breakImpact = entry.break_impact || '';
       breakResponse = entry.break_response || '';
+      defenseTargets = [...(entry.defense?.targets || [])];
+      defensePeriods = [...(entry.defense?.periods || [])];
+      defenseShifts = [...(entry.defense?.shifts || [])];
+      defenseEffectiveness = entry.defense?.effectiveness || 0;
+      bps = entry.bps ?? null;
+      robotShiftStatus = { ...(entry.robot_status_shifts || {}) };
+      foulNature = entry.foul_nature || '';
+      foulDetails = entry.foul_details || '';
       editing = true;
       showReports = false;
     } catch (exception) {
@@ -719,15 +800,8 @@
   // Only the answers this tab asks for, so a performance or robot report never carries stray data-scouting values.
   function kindAnswers() {
     if (reportKind === 'performance') {
-      return {
-        ...ratingAnswers(),
-        intake_speed: intakeSpeed || null,
-        driver_skill: driverSkill || null,
-        offense_rating: offenseRating || null,
-        defense_rating: defenseRating || null,
-        performance_notes: performanceNotes,
-        power_ranking: powerRanking
-      };
+      // Offense and defense ratings are no longer asked; defense is measured from Data scouting instead.
+      return ratingAnswers();
     }
     if (reportKind === 'robot') {
       return {
@@ -744,6 +818,8 @@
         break_details: breakDetails,
         break_impact: breakImpact,
         break_response: breakResponse,
+        foul_nature: hasFouls ? foulNature : '',
+        foul_details: hasFouls ? foulDetails : '',
         beached
       };
     }
@@ -758,7 +834,8 @@
       shuttled,
       shuttle_band: shuttled ? shuttleBand : '',
       shuttle_rating: shuttled ? shuttleRating || null : null,
-      shuttle_notes: shuttled ? shuttleNotes : ''
+      shuttle_notes: shuttled ? shuttleNotes : '',
+      defense: defenseAnswer()
     };
   }
 
@@ -823,7 +900,7 @@
         body: {
           action: 'save-entry',
           form_version: 2,
-          section_fields: 3,
+          section_fields: SECTION_FIELDS,
           report_kind: reportKind,
           robot_present: robotPresent,
           scout_name: scoutName,
@@ -907,7 +984,7 @@
 
 <main class="match-scouting-page">
   {#if $isPhone}
-    <!-- Phone (#124): who is scouting and what, at a glance; the competition and past reports fold away. -->
+    <!-- Phone: who is scouting and what, at a glance; the competition and past reports fold away. -->
     <header class="ph-scout">
       <div class="ph-scout-top">
         <div><small>{me.greeting}, {me.firstName}</small><b>{REPORT_KIND_LABELS[reportKind]}</b></div>
@@ -936,7 +1013,6 @@
           <span>Competition</span>
           <Select
             class="form-select"
-            wrapText
             value={eventKey}
             disabled={saving || reportsLoading}
             on:change={changeCompetition}
@@ -1029,7 +1105,7 @@
   {/if}
 
   {#if $isPhone}
-    <!-- Phone (#124): kind and stage in one slim sticky bar. Kind is icon-only (the title names it);
+    <!-- Phone: kind and stage in one slim sticky bar. Kind is icon-only (the title names it);
          only the current stage shows its name. -->
     <div class="ph-bar">
       <div class="ph-kinds" role="tablist" aria-label="Kind of match scouting">
@@ -1505,6 +1581,99 @@
             </section>
           </div>
 
+          {#if playedDefense}
+            <div class="blk" style="order:{orders.get('core:teleop.defense') ?? 0}">
+              <section class="t-card defense-card" class:ph={$isPhone} aria-labelledby="t-defense">
+                <header class="t-head">
+                  <h3 id="t-defense">{layout.label('teleop.defense', 'Defense details')}</h3>
+                  <span class="tag req">Required</span>
+                </header>
+                <div class="def-row">
+                  <span class="def-label" id="def-targets">Defended</span>
+                  <div class="def-targets" role="group" aria-labelledby="def-targets">
+                    {#each defenseChoices as target (target)}
+                      {@const number = target.replace(/^frc/, '')}
+                      <button
+                        class="def-chip"
+                        aria-pressed={defenseTargets.includes(target)}
+                        class:chosen={defenseTargets.includes(target)}
+                        title={teamNames[number] || ''}
+                        on:click={() => (defenseTargets = toggleIn(defenseTargets, target))}
+                        >{#if defenseTargets.includes(target)}<Check size={14} />{/if}{number}</button
+                      >
+                    {/each}
+                    {#if !opponents.length && defenseTargets.length < 3}
+                      <form class="def-add" on:submit|preventDefault={addDefenseTarget}>
+                        <input
+                          class="form-input"
+                          autocapitalize="characters"
+                          placeholder={matchTeamsLoading ? 'Loading…' : 'Team #'}
+                          aria-label="Add a robot it defended"
+                          bind:value={defenseTargetInput}
+                        /><button
+                          type="submit"
+                          class="def-chip def-add-btn"
+                          aria-label="Add robot"
+                          disabled={!defenseTargetInput.trim()}><Plus size={15} /></button
+                        >
+                      </form>
+                    {/if}
+                  </div>
+                </div>
+                <div class="def-row">
+                  <span class="def-label" id="def-hub">Its hub</span>
+                  <div class="pill-bar" role="group" aria-labelledby="def-hub">
+                    {#each DEFENSE_PERIODS as period}
+                      <button
+                        aria-pressed={defensePeriods.includes(period)}
+                        class:chosen={defensePeriods.includes(period)}
+                        on:click={() => (defensePeriods = toggleIn(defensePeriods, period))}
+                        >{period === 'active' ? 'Active' : 'Inactive'}</button
+                      >
+                    {/each}
+                  </div>
+                </div>
+                <div class="def-row">
+                  <span class="def-label" id="def-shifts">Shifts</span>
+                  <div class="pill-bar" role="group" aria-labelledby="def-shifts">
+                    {#each MATCH_SHIFTS as shift (shift.key)}
+                      <button
+                        aria-pressed={defenseShifts.includes(shift.key)}
+                        aria-label={shift.label}
+                        class:chosen={defenseShifts.includes(shift.key)}
+                        on:click={() => (defenseShifts = toggleIn(defenseShifts, shift.key))}
+                        >{shift.key === 'endgame' ? 'End' : shift.label.replace('Shift ', '')}</button
+                      >
+                    {/each}
+                  </div>
+                </div>
+                <div class="def-row">
+                  <span class="def-label" id="def-rate"
+                    >Effect{#if defenseEffectiveness}<b>{defenseEffectiveness}/{DEFENSE_EFFECTIVENESS_MAX}</b
+                      >{/if}</span
+                  >
+                  <div class="def-rate">
+                    <!-- Phones: two rows of five, so every number is a full-size tap target. -->
+                    {#each $isPhone ? [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]] : [Array.from({ length: DEFENSE_EFFECTIVENESS_MAX }, (_, index) => index + 1)] as row}
+                      <div class="pill-bar" role="group" aria-labelledby="def-rate">
+                        {#each row as value}
+                          <button
+                            aria-pressed={defenseEffectiveness === value}
+                            aria-label={`Defense effectiveness: ${value} of ${DEFENSE_EFFECTIVENESS_MAX}`}
+                            class:chosen={defenseEffectiveness === value}
+                            on:click={() => (defenseEffectiveness = toggleScale(defenseEffectiveness, value))}
+                            >{value}</button
+                          >
+                        {/each}
+                      </div>
+                    {/each}
+                    <div class="def-ends"><span>No effect</span><span>Shut them down</span></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          {/if}
+
           <div class="blk" style="order:{orders.get('core:teleop.balls') ?? 0}">
             <section class="t-card balls-control">
               <header class="t-head">
@@ -1540,17 +1709,22 @@
             </section>
           </div>
 
-          {#if !layout.hidden('teleop.notes')}
+          {#if !layout.hidden('teleop.notes') || playedDefense}
             <div class="blk" style="order:{orders.get('core:teleop.notes') ?? 0}">
               <label class="notes-label scouter-notes"
                 ><span class="t-head"
-                  ><span class="t-title">{layout.label('teleop.notes', 'Real-scout observations')}</span><span
-                    class="tag">Optional</span
-                  ></span
-                ><textarea
+                  ><span class="t-title">{layout.label('teleop.notes', 'Real-scout observations')}</span
+                  >{#if playedDefense}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span
+                    >{/if}</span
+                >{#if playedDefense}<span class="defense-prompt"
+                    ><Shield size={15} /> This robot played defense. Describe it: how it defended (pinning, blocking lanes,
+                    guarding the hub), who it stopped, and how the robots it defended reacted.</span
+                  >{/if}<textarea
                   class="form-input"
                   rows="9"
-                  placeholder="What did the robot actually do? Note repeatable strengths, defense response, cycle consistency, field awareness, or anything the numbers miss."
+                  placeholder={playedDefense
+                    ? 'Describe the defense: what it did, against whom, and how well it worked.'
+                    : 'What did the robot actually do? Note repeatable strengths, defense response, cycle consistency, field awareness, or anything the numbers miss.'}
                   bind:value={teleopNotes}
                 ></textarea></label
               >
@@ -1682,8 +1856,8 @@
             <span class="eyebrow">Performance scouting</span>
             <h2>How well they played</h2>
             <p>
-              Rate the shooting, driving and play, then rank the robots you watched. Tap a rating to set it and tap it
-              again to clear it if you could not judge it.
+              Rate the shooting, scoring rate, intake and driving, rank the robots you watched, and describe how they
+              played. Every answer is required.
             </p>
           </div>
           <Gauge size={20} />
@@ -1691,71 +1865,79 @@
         <div class="blocks">
           <div class="blk" style="order:{orders.get('core:teleop.ratings') ?? 0}">
             <section class="t-card">
-              <header class="t-head"><h3>{layout.label('teleop.ratings', 'Performance ratings')}</h3></header>
+              <header class="t-head">
+                <h3>{layout.label('teleop.ratings', 'Shot accuracy')}</h3>
+                <span class="tag req">Required</span>
+              </header>
               {#if layout.help('teleop.ratings')}<p class="field-help">{layout.help('teleop.ratings')}</p>{/if}
-              {#each TELEOP_RATING_FIELDS as field}
-                {@const labels =
-                  field === 'BPS' ? BPS_LABELS.map((label) => label.replace(' BPS', '')) : ACCURACY_LABELS}
-                <div class="scale-row">
-                  <span class="scale-name"
-                    >{field}{#if field === 'BPS'}
-                      <small>balls per second</small>{/if}</span
+              <div class="scale" role="group" aria-label="Shot accuracy">
+                {#each [1, 2, 3, 4, 5] as value}
+                  <button
+                    class="scale-btn"
+                    aria-pressed={ratings['Shot accuracy'] === value}
+                    aria-label={`Shot accuracy: ${value}, ${ACCURACY_LABELS[value - 1]}`}
+                    class:chosen={ratings['Shot accuracy'] === value}
+                    on:click={() => toggleRating('Shot accuracy', value)}
+                    ><b>{value}</b><small>{ACCURACY_LABELS[value - 1]}</small></button
                   >
-                  <div class="scale" role="group" aria-label={field}>
-                    {#each [1, 2, 3, 4, 5] as value}
-                      <button
-                        class="scale-btn"
-                        aria-pressed={ratings[field] === value}
-                        aria-label={`${field}: ${value}, ${(field === 'BPS' ? BPS_LABELS : ACCURACY_LABELS)[value - 1]}`}
-                        class:chosen={ratings[field] === value}
-                        on:click={() => toggleRating(field, value)}
-                        ><b>{value}</b><small>{labels[value - 1]}</small></button
-                      >
-                    {/each}
-                  </div>
-                </div>
-              {/each}
+                {/each}
+              </div>
             </section>
           </div>
 
-          {#if !layout.hidden('teleop.extraRatings')}
-            <div class="blk" style="order:{orders.get('core:teleop.extraRatings') ?? 0}">
-              <section class="t-card">
-                <header class="t-head">
-                  <h3>{layout.label('teleop.extraRatings', 'Additional ratings')}</h3>
-                  <span class="tag">Optional</span>
-                </header>
-                {#if layout.help('teleop.extraRatings')}<p class="field-help">
-                    {layout.help('teleop.extraRatings')}
-                  </p>{/if}
-                {#each MATCH_OPTIONAL_RATING_FIELDS as field}
-                  <div class="scale-row">
-                    <span class="scale-name">{field}</span>
-                    <div class="scale" role="group" aria-label={field}>
-                      {#each [1, 2, 3, 4, 5] as value}
-                        <button
-                          class="scale-btn"
-                          aria-pressed={ratings[field] === value}
-                          aria-label={`${field}: ${value} of 5`}
-                          class:chosen={ratings[field] === value}
-                          on:click={() => toggleRating(field, value)}
-                          ><b>{value}</b><small>{value === 1 ? 'poor' : value === 5 ? 'excellent' : '\u00a0'}</small
-                          ></button
-                        >
-                      {/each}
-                    </div>
-                  </div>
-                {/each}
-              </section>
-            </div>
-          {/if}
+          <div class="blk" style="order:{orders.get('core:performance.bps') ?? 0}">
+            <section class="t-card">
+              <header class="t-head">
+                <label for="bps-slider" class="t-title">Balls per second</label>
+                <span class="tag req">Required</span>
+              </header>
+              <p class="field-help">Drag to the robot's typical scoring rate while it was shooting.</p>
+              {#if $isPhone}
+                <div class="ph-bps">
+                  <button
+                    class="step-btn"
+                    aria-label="One less ball per second"
+                    disabled={!bps}
+                    on:click={() => (bps = Math.max(0, (bps ?? 0) - 1))}><Minus size={18} /></button
+                  >
+                  <output for="bps-slider" class="ph-bps-value"
+                    ><b>{bps === null ? '—' : bps >= BPS_SLIDER_MAX ? `${BPS_SLIDER_MAX}+` : bps}</b><small
+                      >balls / sec</small
+                    ></output
+                  >
+                  <button
+                    class="step-btn"
+                    aria-label="One more ball per second"
+                    disabled={bps !== null && bps >= BPS_SLIDER_MAX}
+                    on:click={() => (bps = Math.min(BPS_SLIDER_MAX, (bps ?? -1) + 1))}><Plus size={18} /></button
+                  >
+                </div>
+              {/if}
+              <div class="auto-points-slider" class:ph-bps-slider={$isPhone}>
+                <input
+                  id="bps-slider"
+                  type="range"
+                  min="0"
+                  max={BPS_SLIDER_MAX}
+                  step="1"
+                  value={bps ?? 0}
+                  aria-label="Balls per second"
+                  on:input={(event) => (bps = Number(event.currentTarget.value))}
+                />
+                {#if !$isPhone}<output for="bps-slider"
+                    >{bps === null ? '—' : bps >= BPS_SLIDER_MAX ? `${BPS_SLIDER_MAX}+` : bps} BPS</output
+                  >{/if}
+              </div>
+              {#if bps === null}<small class="estimate-result">Not set yet: move the slider, even to 0.</small>{/if}
+            </section>
+          </div>
 
           {#if !layout.hidden('teleop.intake')}
             <div class="blk" style="order:{orders.get('core:teleop.intake') ?? 0}">
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('teleop.intake', 'Intake speed')}</h3>
-                  <span class="tag">Optional</span>
+                  <span class="tag req">Required</span>
                 </header>
                 {#if layout.help('teleop.intake')}<p class="field-help">{layout.help('teleop.intake')}</p>{/if}
                 <div class="scale scale-3" role="group" aria-label="Intake speed">
@@ -1772,44 +1954,38 @@
               </section>
             </div>
           {/if}
-          {#each [['performance.driver', 'Driver skill', 'driver'], ['performance.offense', 'Offense rating', 'offense'], ['performance.defense', 'Defense rating', 'defense']] as [key, fallback, field] (key)}
-            {#if !layout.hidden(key)}
-              <div class="blk" style="order:{orders.get(`core:${key}`) ?? 0}">
-                <section class="t-card">
-                  <header class="t-head">
-                    <h3>{layout.label(key, fallback)}</h3>
-                    <span class="tag">Optional</span>
-                  </header>
-                  {#if layout.help(key)}<p class="field-help">{layout.help(key)}</p>{/if}
-                  <div class="scale" role="group" aria-label={layout.label(key, fallback)}>
-                    {#each [1, 2, 3, 4, 5] as value}
-                      {@const current =
-                        field === 'driver' ? driverSkill : field === 'offense' ? offenseRating : defenseRating}
-                      <button
-                        class="scale-btn"
-                        aria-pressed={current === value}
-                        aria-label={`${layout.label(key, fallback)}: ${value} of 5`}
-                        class:chosen={current === value}
-                        on:click={() => {
-                          if (field === 'driver') driverSkill = toggleScale(driverSkill, value);
-                          else if (field === 'offense') offenseRating = toggleScale(offenseRating, value);
-                          else defenseRating = toggleScale(defenseRating, value);
-                        }}
-                        ><b>{value}</b><small>{value === 1 ? 'poor' : value === 5 ? 'excellent' : '\u00a0'}</small
-                        ></button
-                      >
-                    {/each}
-                  </div>
-                </section>
-              </div>
-            {/if}
-          {/each}
+          {#if !layout.hidden('performance.driver')}
+            <div class="blk" style="order:{orders.get('core:performance.driver') ?? 0}">
+              <section class="t-card">
+                <header class="t-head">
+                  <h3>{layout.label('performance.driver', 'Driver skill')}</h3>
+                  <span class="tag req">Required</span>
+                </header>
+                {#if layout.help('performance.driver')}<p class="field-help">
+                    {layout.help('performance.driver')}
+                  </p>{/if}
+                <div class="scale" role="group" aria-label={layout.label('performance.driver', 'Driver skill')}>
+                  {#each [1, 2, 3, 4, 5] as value}
+                    <button
+                      class="scale-btn"
+                      aria-pressed={driverSkill === value}
+                      aria-label={`${layout.label('performance.driver', 'Driver skill')}: ${value} of 5`}
+                      class:chosen={driverSkill === value}
+                      on:click={() => (driverSkill = toggleScale(driverSkill, value))}
+                      ><b>{value}</b><small>{value === 1 ? 'poor' : value === 5 ? 'excellent' : '\u00a0'}</small
+                      ></button
+                    >
+                  {/each}
+                </div>
+              </section>
+            </div>
+          {/if}
           {#if !layout.hidden('performance.ranking')}
             <div class="blk" style="order:{orders.get('core:performance.ranking') ?? 0}">
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('performance.ranking', 'Power ranking')}</h3>
-                  <span class="tag">Optional</span>
+                  <span class="tag req">Required</span>
                 </header>
                 {#if layout.help('performance.ranking')}<p class="field-help">
                     {layout.help('performance.ranking')}
@@ -1829,7 +2005,7 @@
           {#if !layout.hidden('performance.notes')}
             <div class="blk" style="order:{orders.get('core:performance.notes') ?? 0}">
               <label class="notes-label"
-                >{layout.label('performance.notes', 'Notes about performance')} (optional)<textarea
+                >{layout.label('performance.notes', 'Notes about performance')} (required)<textarea
                   class="form-input"
                   rows="5"
                   placeholder="What stood out about how they played: strengths, mistakes, strategy, how they reacted to defense."
@@ -1864,14 +2040,50 @@
                   class="tag req">Required</span
                 >
               </header>
-              <div class="choice-grid status-choice-grid">
-                {#each [['active', 'Active'], ['dead', 'Dead'], ['stopped', 'Stopped']] as [status, label]}<button
-                    class="status-choice status-{status}"
-                    aria-pressed={teleopRobotStatus === status}
-                    class:chosen={teleopRobotStatus === status}
-                    on:click={() => (teleopRobotStatus = status)}>{label}</button
-                  >{/each}
-              </div>
+              <p class="field-help">One answer for every shift and the endgame.</p>
+              {#if $isPhone}
+                <div class="ph-shift-status">
+                  {#each MATCH_SHIFTS as shift (shift.key)}
+                    <span class="shift-name"
+                      >{shift.key === 'endgame' ? 'End' : shift.label.replace('Shift ', 'S')}</span
+                    >
+                    <div class="pill-bar status-bar" role="group" aria-label={`Robot status, ${shift.label}`}>
+                      {#each [['active', 'Active'], ['dead', 'Dead'], ['stopped', 'Stopped']] as [status, label]}<button
+                          class="status-{status}"
+                          aria-pressed={robotShiftStatus[shift.key] === status}
+                          class:chosen={robotShiftStatus[shift.key] === status}
+                          on:click={() => (robotShiftStatus = { ...robotShiftStatus, [shift.key]: status })}
+                          >{label}</button
+                        >{/each}
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <div class="shift-status-list">
+                  {#each MATCH_SHIFTS as shift (shift.key)}
+                    <div class="shift-status-row" role="group" aria-label={`Robot status, ${shift.label}`}>
+                      <span class="shift-name">{shift.label}</span>
+                      <div class="choice-grid status-choice-grid">
+                        {#each [['active', 'Active'], ['dead', 'Dead'], ['stopped', 'Stopped']] as [status, label]}<button
+                            class="status-choice status-{status}"
+                            aria-pressed={robotShiftStatus[shift.key] === status}
+                            class:chosen={robotShiftStatus[shift.key] === status}
+                            on:click={() => (robotShiftStatus = { ...robotShiftStatus, [shift.key]: status })}
+                            >{label}</button
+                          >{/each}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+              {#if !MATCH_SHIFTS.some((shift) => robotShiftStatus[shift.key])}
+                <button
+                  class="btn btn-sm all-active"
+                  on:click={() =>
+                    (robotShiftStatus = Object.fromEntries(MATCH_SHIFTS.map((shift) => [shift.key, 'active'])))}
+                  >Active the whole match</button
+                >
+              {/if}
             </div>
           </div>
           <div class="blk" style="order:{orders.get('core:teleop.crash') ?? 0}">
@@ -2023,6 +2235,24 @@
                     </div>
                   {/each}
                 </div>
+                {#if hasFouls}
+                  <label class="foul-nature"
+                    >Nature of the foul (required)
+                    <Select class="form-input" bind:value={foulNature}>
+                      <option value="">Choose what the foul was for</option>
+                      {#each FOUL_NATURES as nature}<option value={nature}>{nature}</option>{/each}
+                    </Select>
+                  </label>
+                  <label class="foul-nature"
+                    >{foulNature === 'Other' ? 'Describe the foul (required)' : 'Foul details (optional)'}<textarea
+                      class="form-input"
+                      rows="2"
+                      maxlength="2000"
+                      placeholder="What happened, and when in the match?"
+                      bind:value={foulDetails}
+                    ></textarea></label
+                  >
+                {/if}
               </section>
             </div>
           {/if}
@@ -2039,7 +2269,7 @@
               </fieldset>
             </div>
           </div>
-          {#if !layout.hidden('robot.breaks')}
+          {#if !layout.hidden('robot.breaks') || mechanicalBreak === true}
             <div class="blk" style="order:{orders.get('core:robot.breaks') ?? 0}">
               <section
                 class="t-card breaks-card"
@@ -2050,11 +2280,13 @@
               >
                 <header class="t-head">
                   <h3>{layout.label('robot.breaks', 'What broke and how the team handled it')}</h3>
-                  <span class="tag">Optional</span>
+                  {#if mechanicalBreak === true}<span class="tag req">Required</span>{:else}<span class="tag"
+                      >Optional</span
+                    >{/if}
                 </header>
                 {#if layout.help('robot.breaks')}<p class="field-help">{layout.help('robot.breaks')}</p>{/if}
                 <label
-                  >What broke<textarea
+                  >What broke{mechanicalBreak === true ? ' (required)' : ''}<textarea
                     class="form-input"
                     rows="2"
                     maxlength="2000"
@@ -2636,12 +2868,6 @@
     font-size: 0.92rem;
     font-weight: 500;
   }
-  .scale-name small {
-    display: block;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 400;
-  }
   .scale {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3076,6 +3302,245 @@
   .training-banner .muted {
     font-size: 0.8rem;
   }
+  /* defense details (Data), per-shift robot status and foul nature (Robot). */
+  .defense-card {
+    display: grid;
+    gap: var(--space-3);
+  }
+  .def-row {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: var(--gap-2);
+    align-items: center;
+  }
+  .def-label {
+    display: grid;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .def-label b {
+    color: var(--secondary);
+    font-size: 0.95rem;
+  }
+  .def-targets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .def-chip {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-items: center;
+    justify-content: center;
+    min-width: 4rem;
+    height: 2.4rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-1);
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .def-chip.chosen {
+    border-color: var(--brand-gold-strong);
+    background: var(--brand-gold-soft);
+    color: var(--secondary);
+  }
+  .def-add {
+    display: inline-flex;
+    gap: 0.3rem;
+    margin: 0;
+  }
+  .def-add .form-input {
+    width: 6.5rem;
+    height: 2.4rem;
+    min-height: 0;
+    border-radius: 999px;
+  }
+  .def-add-btn {
+    min-width: 2.4rem;
+    padding: 0;
+  }
+  .def-add-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  /* A joined row of equal segments: one control, not a wall of separate boxes. */
+  .pill-bar {
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .pill-bar button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 2.4rem;
+    padding: 0 0.25rem;
+    border: 0;
+    border-left: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text);
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .pill-bar button:first-child {
+    border-left: 0;
+  }
+  .pill-bar button.chosen {
+    background: var(--brand-gold-soft);
+    box-shadow: inset 0 0 0 1px var(--brand-gold-strong);
+    color: var(--secondary);
+    font-weight: 700;
+  }
+  /* Phones: labels above each control and thumb-size segments. */
+  .defense-card.ph .def-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+  .defense-card.ph .def-label {
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+  }
+  .defense-card.ph .pill-bar button,
+  .defense-card.ph .def-chip,
+  .defense-card.ph .def-add .form-input {
+    height: var(--tap-comfort);
+  }
+  .defense-card.ph .def-chip {
+    flex: 1 1 5rem;
+  }
+  .defense-card.ph .def-add {
+    flex: 1 1 100%;
+  }
+  .defense-card.ph .def-add .form-input {
+    flex: 1;
+    width: auto;
+  }
+  .defense-card.ph .def-add-btn {
+    flex: 0 0 var(--tap-comfort);
+  }
+  .ph-bps {
+    display: grid;
+    grid-template-columns: var(--tap-comfort) minmax(0, 1fr) var(--tap-comfort);
+    gap: var(--gap-2);
+    align-items: center;
+  }
+  .ph-bps .step-btn {
+    display: grid;
+    place-items: center;
+    width: var(--tap-comfort);
+    height: var(--tap-comfort);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .ph-bps .step-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .ph-bps-value {
+    display: grid;
+    justify-items: center;
+  }
+  .ph-bps-value b {
+    font-size: 2rem;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .ph-bps-value small {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .ph-bps-slider input[type='range'] {
+    height: var(--tap-comfort);
+  }
+  .ph-shift-status {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    gap: 0.4rem var(--gap-2);
+    align-items: center;
+  }
+  .ph-shift-status .pill-bar button {
+    height: var(--tap-comfort);
+  }
+  .status-bar button.chosen.status-dead,
+  .status-bar button.chosen.status-stopped {
+    background: var(--red-soft);
+    box-shadow: inset 0 0 0 1px var(--red-base);
+    color: var(--text);
+  }
+  .def-rate {
+    display: grid;
+    gap: 0.2rem;
+  }
+  .def-ends {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+  }
+  .defense-prompt {
+    display: flex;
+    gap: 0.4rem;
+    align-items: flex-start;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .shift-status-list {
+    display: grid;
+    gap: var(--gap-2);
+  }
+  .shift-status-row {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: var(--gap-2);
+    align-items: center;
+  }
+  .shift-status-row .choice-grid {
+    margin-top: 0;
+  }
+  .shift-name {
+    font-weight: 600;
+  }
+  .all-active {
+    justify-self: start;
+    margin-top: var(--space-2);
+  }
+  .foul-nature {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: var(--space-3);
+    font-weight: 600;
+  }
+  @media (max-width: 480px) {
+    .def-row {
+      grid-template-columns: 1fr;
+      gap: 0.3rem;
+    }
+    .def-label {
+      display: flex;
+      gap: 0.4rem;
+      align-items: baseline;
+    }
+    .shift-status-row {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+  }
   .foul-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3170,8 +3635,10 @@
     align-items: center;
     margin: 0 0 0 auto;
   }
+  /* The select sizes to the event name, so "2026mttd — 2026 MadTown Throwdown (active)" stays on one line. */
   .page-header .competition-picker {
-    grid-template-columns: auto minmax(14rem, 22rem);
+    grid-template-columns: auto minmax(14rem, max-content);
+    white-space: nowrap;
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
@@ -3669,7 +4136,7 @@
     }
   }
 
-  /* Phone layout (#124). The page sits on the app's own gutter, the stages are one thin row that
+  /* Phone layout. The page sits on the app's own gutter, the stages are one thin row that
      stays under the header, and each stage's Back / Continue bar docks above the bottom bar so the
      next step is always under the thumb. */
   @media (max-width: 768px) {
@@ -3785,7 +4252,7 @@
     }
   }
 
-  /* Phone header (#124) */
+  /* Phone header */
   .ph-scout {
     display: grid;
     gap: var(--space-2);
@@ -3853,7 +4320,7 @@
     font-size: 0.85rem;
   }
 
-  /* Phone, compact (#124): as much of each stage on screen as possible. Smaller kind switch and
+  /* Phone, compact: as much of each stage on screen as possible. Smaller kind switch and
      stage row, no descriptions, two fields per row where they fit, and the stage's action docked. */
   @media (max-width: 900px) {
     .ph-scout {
@@ -4020,7 +4487,7 @@
     }
   }
 
-  /* Phone: one bar for kind + stage (#124) */
+  /* Phone: one bar for kind + stage */
   @media (max-width: 900px) {
     .toolbar .kind-tabs,
     .stage-nav {
@@ -4130,7 +4597,7 @@
     color: var(--text-muted);
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .ph-stage-name {
       white-space: normal;

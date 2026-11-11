@@ -64,7 +64,7 @@ export function matchStatus(match, now = Date.now() / 1000) {
   return lockTime && now >= lockTime ? 'locked' : 'upcoming';
 }
 
-// Only the columns the EPA model reads from match scouting (#171).
+// Only the columns the EPA model reads from match scouting.
 const EPA_SCOUT_COLUMNS =
   'id,match_key,team_key,report_kind,created_by,scout_name,balls_scored_average,auto_points_average,ratings,teleop_roles,defense_rating,power_ranking,teleop_robot_status,mechanical_break,significant_crash,beached,post_notes';
 // robot_present only exists once its migration has run; reads fall back to the columns above without it.

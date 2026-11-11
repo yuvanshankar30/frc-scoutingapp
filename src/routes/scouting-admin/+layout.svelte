@@ -21,6 +21,7 @@
   import FormEditor from '$lib/components/forms/FormEditor.svelte';
   import ScoutDeadlines from '$lib/components/scouting/ScoutDeadlines.svelte';
   import ScoutDataBrowser from '$lib/components/scouting/ScoutDataBrowser.svelte';
+  import TeamRankingDefensePanel from '$lib/components/scouting/TeamRankingDefensePanel.svelte';
   import MatchKeyReview from '$lib/components/scouting/MatchKeyReview.svelte';
   import DataStoragePanel from '$lib/components/scouting/DataStoragePanel.svelte';
   import AdminModelsPanel from '$lib/components/scouting/AdminModelsPanel.svelte';
@@ -1505,6 +1506,7 @@
           {#if googleSheetLastSyncError}<p class="sp-error">{googleSheetLastSyncError}</p>{/if}
         </section>
       </div>
+      <TeamRankingDefensePanel reports={matchReports} />
       <MatchKeyReview />
       <div class="data-browser">
         <ScoutDataBrowser reports={matchReports} onRemove={removeMatchReport} />
@@ -1611,7 +1613,7 @@
         </div>
       </div>
 
-      <!-- Scouting at a glance (#122): same charts on desktop (two columns) and phones (one). -->
+      <!-- Scouting at a glance: same charts on desktop (two columns) and phones (one). -->
       <section class="admin-charts" aria-label="Scouting charts">
         <figure class="card chart-card wide">
           <h3>Robots reported per match</h3>
@@ -2375,13 +2377,13 @@
   .sp-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
+    gap: var(--space-3);
     align-items: start;
   }
   .sp-panel {
     display: grid;
-    gap: var(--space-3);
-    padding: var(--space-5);
+    gap: var(--space-2);
+    padding: var(--space-4);
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -2596,7 +2598,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   .adm-picker {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2671,7 +2673,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .who small,
     .name {

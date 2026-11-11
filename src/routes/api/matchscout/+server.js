@@ -279,6 +279,11 @@ export async function POST({ request }) {
         withoutPresent.post_notes = ['Robot did not show up.', withoutPresent.post_notes].filter(Boolean).join(' ');
       ({ data, error } = await save(withoutPresent));
     }
+    // Same for the detail columns (20260104000000_match_report_detail_fields): the report saves without them rather than not at all.
+    if (error && /\b(defense|bps|robot_status_shifts|foul_nature|foul_details)\b/.test(error.message || '')) {
+      const { defense, bps, robot_status_shifts, foul_nature, foul_details, ...withoutNew } = value;
+      ({ data, error } = await save(withoutNew));
+    }
     if (error) return json({ error: error.message }, { status: 500 });
 
     let pitProblem = null;

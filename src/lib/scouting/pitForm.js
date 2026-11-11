@@ -3,8 +3,26 @@
 // choice added here shows up, saves and counts everywhere at once.
 
 export const DRIVEBASE_OPTIONS = ['Mechanum', 'Swerve', 'Tank', 'Other'];
-export const SHOOTER_OPTIONS = ['Single Fixed', 'Multi Fixed', 'Wide', 'Turret', 'Double Turret', 'Other'];
-export const HOPPER_OPTIONS = ['Spindexer', 'Dye Rotor', 'Belted', 'Floor roller', 'Passive roller', 'Other'];
+// "No Shooter" / "No Indexer" for robots without one (e.g. a pure defense or shuttle bot), so a blank still means
+// "not asked yet".
+export const SHOOTER_OPTIONS = [
+  'No Shooter',
+  'Single Fixed',
+  'Multi Fixed',
+  'Wide',
+  'Turret',
+  'Double Turret',
+  'Other'
+];
+export const HOPPER_OPTIONS = [
+  'No Indexer',
+  'Spindexer',
+  'Dye Rotor',
+  'Belted',
+  'Floor roller',
+  'Passive roller',
+  'Other'
+];
 export const NO_CLIMB_OPTION = 'No Climb';
 export const CLIMB_OPTIONS = [NO_CLIMB_OPTION, 'L1 Auto', 'L1', 'L2', 'L3'];
 
@@ -13,9 +31,13 @@ export const MAX_AUTO_NAME_LENGTH = 60;
 export const MAX_AUTO_DESCRIPTION_LENGTH = 220;
 export const MAX_AUTO_PATH_POINTS = 500;
 export const MAX_BREAKING_COMPONENT_LENGTH = 240;
+// The drivebase is one described answer now (e.g. "Swerve, MK5n modules"), not a fixed list.
+export const MAX_DRIVEBASE_LENGTH = 120;
 
 export const YES_NO_OPTIONS = ['Yes', 'No'];
-export const TRENCH_OR_BUMP_OPTIONS = ['Trench', 'Bump', 'Both', 'Neither'];
+export const MAX_ROBOT_WEIGHT_LENGTH = 40;
+// No "Neither": every robot has to get between the zones one way or the other.
+export const TRENCH_OR_BUMP_OPTIONS = ['Trench', 'Bump', 'Both'];
 export const MAIN_BREAKER_OPTIONS = ['Bussmann', 'OptiFuse', 'Other'];
 export const SB_CONNECTOR_OPTIONS = ['SB60', 'SB40', 'Other'];
 export const WIRE_INSULATION_OPTIONS = ['Silicone', 'Other'];
@@ -57,6 +79,26 @@ export const HOPPER_WALL_OPTIONS = ['Reinforced Corners', 'Polycarbonate Flanges
 export const BUMPER_FOAM_OPTIONS = ['Pool Noodle', 'EVA', 'XPE', 'Other'];
 export const HARDWARE_STANDARD_OPTIONS = ['E-clip', 'Metric Fasteners', 'Metric Bearings'];
 export const ENCODER_TYPE_OPTIONS = ['PWM', 'CAN Through Bore', 'Other'];
+// The jobs a team would rather do in a match, as they describe it in the pit.
+export const PREFERRED_ROLE_OPTIONS = ['Shooter', 'Shuttler', 'Defense', 'Collector', 'Climber', 'Flexible'];
+export const MAX_STRENGTHS_LENGTH = 500;
+export const MAX_WEAKNESSES_LENGTH = 500;
+
+// The abilities a pit scout used to rate 1-10 (V4.41.0 to V4.45.0), and how much each counted toward the weighted
+// pit score. The form no longer asks for them; Team View still shows the ratings older reports saved.
+// Shooting decides most matches, so it weighs the most; reliability and auto come next because a
+// robot that dies or skips auto costs the alliance more than one that is a weak defender.
+export const PIT_ABILITIES = Object.freeze([
+  { key: 'ability_shooting', label: 'Shooting', weight: 3 },
+  { key: 'ability_auto', label: 'Auto', weight: 2 },
+  // Same key as the old Extra > Ratings question, so Power Rankings and the picklist keep reading one reliability answer.
+  { key: 'overall_reliability_rating', label: 'Reliability', weight: 2 },
+  { key: 'ability_climbing', label: 'Climbing', weight: 1.5 },
+  { key: 'ability_intake', label: 'Intake', weight: 1.5 },
+  { key: 'ability_driving', label: 'Driving', weight: 1.5 },
+  { key: 'ability_shuttling', label: 'Shuttling', weight: 1 },
+  { key: 'ability_defense', label: 'Defense', weight: 1 }
+]);
 
 // Technical details, by kind of answer.
 export const TECHNICAL_SINGLE_OPTIONS = {
@@ -87,7 +129,8 @@ export const TECHNICAL_MULTI_OPTIONS = {
   vision: VISION_OPTIONS,
   programming_language: PROGRAMMING_LANGUAGE_OPTIONS,
   hardware_standards: HARDWARE_STANDARD_OPTIONS,
-  encoder_types: ENCODER_TYPE_OPTIONS
+  encoder_types: ENCODER_TYPE_OPTIONS,
+  preferred_roles: PREFERRED_ROLE_OPTIONS
 };
 // Free text, with its longest allowed length.
 export const TECHNICAL_TEXT_FIELDS = {
@@ -96,7 +139,17 @@ export const TECHNICAL_TEXT_FIELDS = {
   roller_hub_material: 80,
   software_other: 240,
   pit_contact_phone: 80,
-  intake_style: 80
+  // Kept apart from pit_contact_phone (the pit crew's number, asked since V4.8.0) so older answers never pose as a strat contact.
+  strat_phone: 80,
+  intake_style: 80,
+  // Free response, without bumpers and battery, e.g. "112 lb".
+  robot_weight: MAX_ROBOT_WEIGHT_LENGTH,
+  // Free response. canivore_count replaces the old yes/no "Uses CANivore?" (kept for older reports); can_bus_count
+  // was a number before V4.46.0, and older numbers read back as text.
+  canivore_count: 40,
+  can_bus_count: 40,
+  strengths: MAX_STRENGTHS_LENGTH,
+  weaknesses: MAX_WEAKNESSES_LENGTH
 };
 // Numbers, with their allowed range.
 const RATING = { min: 1, max: 10, integer: true };
@@ -108,12 +161,40 @@ export const TECHNICAL_NUMBER_FIELDS = {
   drivetrain_length: {},
   drivetrain_width: {},
   drivetrain_height: {},
-  can_bus_count: { integer: true },
   hopper_capacity: {},
   electrical_rating: RATING,
   drivebase_rating: RATING,
-  overall_reliability_rating: RATING
+  overall_reliability_rating: RATING,
+  ...Object.fromEntries(PIT_ABILITIES.map((ability) => [ability.key, RATING]))
 };
+
+/**
+ * The weighted pit score: the weighted average of the abilities that were rated, out of 10 (one
+ * decimal), or null when none were. Unrated abilities are left out rather than counted as zero, so a
+ * half-finished report isn't dragged down by questions nobody asked yet.
+ */
+export function weightedAbilityScore(details) {
+  let total = 0;
+  let weights = 0;
+  let rated = 0;
+  for (const ability of PIT_ABILITIES) {
+    const value = normalizeTechnicalNumber(details?.[ability.key], RATING, null);
+    if (value === null) continue;
+    total += value * ability.weight;
+    weights += ability.weight;
+    rated += 1;
+  }
+  return {
+    score: weights ? Math.round((total / weights) * 10) / 10 : null,
+    rated,
+    total: PIT_ABILITIES.length
+  };
+}
+
+/** A phone answer as a tel:/sms: target: digits and a leading + only. */
+export function dialablePhone(phone) {
+  return String(phone || '').replace(/[^\d+]/g, '');
+}
 
 export const PIT_STATUS = Object.freeze({
   pending: { label: 'Pending', className: 'status-pending', sort: 0 },

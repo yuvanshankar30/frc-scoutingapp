@@ -23,7 +23,7 @@
 </div>
 
 <style>
-  /* Phones (#124): the event picker takes its own full row in a page header, so the event name fits
+  /* Phones: the event picker takes its own full row in a page header, so the event name fits
      on one line, and the "Season" label is dropped (the picker already says "Current Event (...)"). */
   @media (max-width: 900px) {
     .season-filter {

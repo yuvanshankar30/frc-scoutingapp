@@ -177,7 +177,7 @@
 {:else if !ordered.length}
   <div class="empty-state"><p>No schedule published for {eventKey} yet.</p></div>
 {:else if $isPhone}
-  <!-- Phone (#124): a full-page match list, and each match on its own screen. -->
+  <!-- Phone: a full-page match list, and each match on its own screen. -->
   {#if phoneScreen === 'list' || !selected}
     <div class="pm">
       <label class="pm-search"
@@ -793,7 +793,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   @media (max-width: 900px) {
     .page-header {
       display: none;

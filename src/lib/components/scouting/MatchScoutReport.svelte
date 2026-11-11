@@ -5,7 +5,8 @@
     MATCH_FORM_RATING_FIELDS,
     MATCH_OPTIONAL_RATING_FIELDS,
     ACCURACY_LABELS,
-    BPS_LABELS
+    BPS_LABELS,
+    MATCH_SHIFTS
   } from '$lib/scouting/matchScouting.js';
   import { REPORT_KIND_LABELS } from '$lib/scouting/reportKinds.js';
 
@@ -66,6 +67,21 @@
           .join('  ')
       : '-';
 
+  // Detail answers: defense details, the exact BPS slider reading and robot status per shift.
+  const teams = (value) => (Array.isArray(value) && value.length ? value.map(teamNumber).join(', ') : '-');
+  const shiftNames = (value) =>
+    Array.isArray(value) && value.length
+      ? MATCH_SHIFTS.filter((shift) => value.includes(shift.key))
+          .map((shift) => shift.label)
+          .join(', ')
+      : '-';
+  const hubPeriods = (value) =>
+    Array.isArray(value) && value.length ? value.map((period) => `hub ${period}`).join(', ') : '-';
+  $: shiftStatusRows = report?.robot_status_shifts
+    ? MATCH_SHIFTS.map((shift) => [shift.label, valueOrDash(report.robot_status_shifts[shift.key])])
+    : [];
+  $: bpsValue = present(report?.bps) ? `${report.bps} BPS` : rating('BPS');
+
   $: kind = ['data', 'performance', 'robot'].includes(report?.report_kind) ? report.report_kind : 'legacy';
   $: matchTitle = matchLabel(report?.match_key).replace(/^(?:qm|q)?(\d+)$/i, 'Match $1');
   $: reportTime = report?.updated_at || report?.created_at;
@@ -91,7 +107,7 @@
     kind === 'performance'
       ? [
           { label: 'Accuracy', value: rating('Shot accuracy') },
-          { label: 'BPS', value: rating('BPS') },
+          { label: 'BPS', value: bpsValue },
           { label: 'Driver', value: outOfFive(report?.driver_skill) },
           { label: 'Intake', value: valueOrDash(report?.intake_speed) }
         ]
@@ -155,6 +171,23 @@
               ['Roles', report?.teleop_roles_none ? 'None observed' : list(report?.teleop_roles)]
             ]
           },
+          ...(report?.defense
+            ? [
+                {
+                  key: 'defense',
+                  title: 'Defense',
+                  rows: [
+                    ['Defended', teams(report.defense.targets)],
+                    ['When', hubPeriods(report.defense.periods)],
+                    ['Shifts', shiftNames(report.defense.shifts)],
+                    [
+                      'Effectiveness',
+                      present(report.defense.effectiveness) ? `${report.defense.effectiveness}/10` : '-'
+                    ]
+                  ]
+                }
+              ]
+            : []),
           {
             key: 'shuttling',
             title: 'Shuttling',
@@ -175,15 +208,15 @@
               key: 'ratings',
               title: 'Ratings',
               rows: [...MATCH_FORM_RATING_FIELDS, ...MATCH_OPTIONAL_RATING_FIELDS]
-                .map((field) => [field, rating(field)])
+                .map((field) => [field, field === 'BPS' ? bpsValue : rating(field)])
                 .filter(([field, value]) => MATCH_FORM_RATING_FIELDS.includes(field) || value !== '-')
             },
             {
               key: 'play',
               title: 'Play',
               rows: [
-                ['Offense', outOfFive(report?.offense_rating)],
-                ['Defense', outOfFive(report?.defense_rating)],
+                ...(present(report?.offense_rating) ? [['Offense', outOfFive(report.offense_rating)]] : []),
+                ...(present(report?.defense_rating) ? [['Defense', outOfFive(report.defense_rating)]] : []),
                 ['Driver skill', outOfFive(report?.driver_skill)],
                 ['Intake speed', valueOrDash(report?.intake_speed)]
               ]
@@ -197,6 +230,7 @@
                 title: 'Condition',
                 rows: [
                   ['Robot status', robotStatus],
+                  ...shiftStatusRows,
                   ['Significant crash', yesNo(report?.significant_crash)],
                   ...(report?.significant_crash ? [['Crash target', valueOrDash(report?.crash_target)]] : []),
                   ['Auto collision', yesNo(report?.auto_collision)],
@@ -211,7 +245,9 @@
                 rows: [
                   ['Card', present(report?.card) ? report.card : 'None'],
                   ['Minor fouls', valueOrDash(report?.fouls_minor)],
-                  ['Major fouls', valueOrDash(report?.fouls_major)]
+                  ['Major fouls', valueOrDash(report?.fouls_major)],
+                  ...(present(report?.foul_nature) ? [['Foul nature', report.foul_nature]] : []),
+                  ...(present(report?.foul_details) ? [['Foul details', report.foul_details]] : [])
                 ]
               }
             ]
@@ -612,7 +648,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .quick-stats small,
     .quick-stats b,

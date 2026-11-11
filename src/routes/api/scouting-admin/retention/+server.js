@@ -1,4 +1,4 @@
-// Scouting Admin -> Data -> Storage (#125).
+// Scouting Admin -> Data -> Storage.
 // GET: sizes, limits and the cleanup plan (a dry run; nothing is deleted).
 // POST { action: 'approve', plan_id }: recomputes the plan and deletes its items only when a limit is crossed and the
 // plan is still the one the admin approved (same plan_id). Scouting admins only.

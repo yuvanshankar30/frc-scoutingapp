@@ -1,5 +1,5 @@
 <script>
-  // Scouting Admin -> Data -> Storage (#125): how full the database and file storage are, and what old competition
+  // Scouting Admin -> Data -> Storage: how full the database and file storage are, and what old competition
   // data could be cleaned. Cleanup is offered only when a limit is crossed, and nothing is deleted until an admin
   // approves the exact plan shown here.
   import { onMount } from 'svelte';

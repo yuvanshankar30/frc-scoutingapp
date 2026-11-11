@@ -65,7 +65,13 @@ export const FORM_TYPES = Object.freeze({
             help: 'Pick a suggested range from the list or type a number, a range or a lower bound, like 137, 100-150 or 500+.',
             note: 'The scoring estimate every analytics page uses.'
           }),
-          block('teleop.notes', 'Real-scout observations')
+          block('teleop.defense', 'Defense details', {
+            optional: false,
+            note: 'Appears when Defense is picked: robots defended, hub active/inactive, shifts and a 1-10 effectiveness.'
+          }),
+          block('teleop.notes', 'Real-scout observations', {
+            note: 'Required when the robot played defense: the scout describes the defense.'
+          })
         ]
       },
       {
@@ -89,37 +95,36 @@ export const FORM_TYPES = Object.freeze({
         id: 'performance',
         label: 'Performance',
         blocks: [
-          block('teleop.ratings', 'Performance ratings', {
+          block('teleop.ratings', 'Shot accuracy', {
             optional: false,
-            help: 'Each number shows the band it stands for. Boundary values belong to the lower band. Clear a rating if you could not judge it.',
-            note: 'Shot accuracy and balls per second.'
+            help: 'Each number shows the band it stands for. Boundary values belong to the lower band.',
+            note: 'Every Performance answer is required.'
           }),
-          block('teleop.extraRatings', 'Additional ratings', {
-            help: '1 is poor and 5 is excellent. Leave blank when you did not see it.',
-            note: 'Driver awareness, defense and reliability.'
+          block('performance.bps', 'Balls per second', {
+            optional: false,
+            note: 'A slider; its 1-5 band also fills the older BPS rating.'
           }),
-          block('teleop.intake', 'Intake speed', { help: '1 is slow and 3 is fast. Leave blank when not observed.' }),
+          block('teleop.intake', 'Intake speed', { optional: false, help: '1 is slow and 3 is fast.' }),
           block('performance.driver', 'Driver skill', {
+            optional: false,
             help: '1 is poor and 5 is excellent: field awareness, control and decision making.'
           }),
-          block('performance.offense', 'Offense rating', {
-            help: 'How much the robot helped its alliance score. Leave blank when you did not see it.'
-          }),
-          block('performance.defense', 'Defense rating', {
-            help: 'How well it played defense, or held up against it. Leave blank when it did not happen.'
-          }),
           block('performance.ranking', 'Power ranking', {
+            optional: false,
             help: 'Tap the robots from best to worst in this match. Mark a robot "Didn\'t watch" to leave it out; every scout\'s rankings are averaged per match.',
             note: 'Averaged across scouts on Power Rankings.'
           }),
-          block('performance.notes', 'Notes about performance')
+          block('performance.notes', 'Notes about performance', { optional: false })
         ]
       },
       {
         id: 'robot',
         label: 'Robot',
         blocks: [
-          block('teleop.status', 'Robot status', { optional: false, note: 'Active, dead or stopped.' }),
+          block('teleop.status', 'Robot status', {
+            optional: false,
+            note: 'Active, dead or stopped for each shift (1-4) and endgame.'
+          }),
           block('teleop.crash', 'Significant crash', {
             optional: false,
             note: 'Whether the robot crashed, and into what.'
@@ -128,14 +133,16 @@ export const FORM_TYPES = Object.freeze({
           block('robot.intakeJammed', 'Intake jammed during the match'),
           block('postmatch.cards', 'Cards'),
           block('robot.fouls', 'Fouls', {
-            help: 'Count the fouls called on this robot. Leave at — if you could not tell.'
+            help: 'Count the fouls called on this robot. Leave at — if you could not tell.',
+            note: 'Any foul asks for its nature from a dropdown.'
           }),
           block('postmatch.break', 'Mechanical break', {
             optional: false,
             note: 'Needed to decide whether the pit crew must be told.'
           }),
           block('robot.breaks', 'What broke and how the team handled it', {
-            help: "What broke, how it changed the robot's play, and how the team played around it or fixed it."
+            help: "What broke, how it changed the robot's play, and how the team played around it or fixed it.",
+            note: 'What broke is required when there was a mechanical break.'
           }),
           block('postmatch.beached', 'Robot became beached'),
           block('postmatch.problem', 'Send a problem to the pit crew', {
@@ -148,34 +155,35 @@ export const FORM_TYPES = Object.freeze({
   },
   pit: {
     label: 'Pit scouting',
+    // One Main page (plus Photos, which has no questions). Questions an admin added to the old Extra tab
+    // before V4.46.0 are read back onto Main instead of being dropped.
+    movedSections: { extra: 'main' },
     sections: [
       {
         id: 'main',
         label: 'Main',
         blocks: [
-          block('main.shooter', 'Shooter Type'),
-          block('main.hopper', 'Indexer Type'),
-          block('main.archetype', 'Robot Role'),
+          block('main.drivebase', 'Drivebase', { note: 'One described answer, e.g. "Swerve, MK5n modules".' }),
+          block('main.dimensions', 'Drivetrain dimensions (in)', { note: 'Length, width and height.' }),
+          block('main.weight', 'Robot weight (without bumpers and battery)'),
+          block('main.trench', 'Trench, bump or both?'),
+          block('main.shooter', 'Shooter and indexer', { note: 'Shooter type, indexer type and hopper capacity.' }),
           block('main.bps', 'Estimated BPS'),
-          block('main.technical', 'Main technical questions', {
+          block('main.autos', 'Autos', { note: 'Each auto they can run, drawn on the field with a name and notes.' }),
+          block('main.autoPoints', 'How many points do you usually score in auto?'),
+          block('main.roles', 'Preferred role in the game'),
+          block('main.strengths', 'Strengths'),
+          block('main.weaknesses', 'Weaknesses and what is likely to break'),
+          block('main.breaker', 'Main breaker and CAN', {
             rename: false,
-            note: 'Main breaker, CANivore, CAN buses, trench or bump, hopper capacity and similar.'
+            note: 'Main breaker brand and bump protection, number of CANivores, CAN bus count.'
           }),
-          block('main.breaking', "What's most likely to break?"),
-          block('main.autopoints', 'How many points do you usually score in auto?'),
-          block('main.notes', 'Anything else?')
-        ]
-      },
-      {
-        id: 'extra',
-        label: 'Extra',
-        blocks: [
-          block('extra.setup', 'Contact & Setup', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.mechanisms', 'Mechanisms', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.electrical', 'Electrical', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.controls', 'Controls', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.structure', 'Structure', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.ratings', 'Ratings', { note: 'A whole page of questions in the Extra tab.' })
+          block('main.controls', 'Controls and software', {
+            rename: false,
+            note: 'Coprocessor, WPILib, auto tools, vision, language.'
+          }),
+          block('main.contact', "Strat person's phone number"),
+          block('main.notes', 'Extra notes')
         ]
       }
     ]
@@ -262,17 +270,19 @@ const intOrNull = (value) =>
 /** Cleans anything an editor or a client sent into a well-formed form, dropping what is not valid. */
 export function sanitizeForm(raw, formType) {
   const sections = new Set((FORM_TYPES[formType]?.sections || []).map((section) => section.id));
+  const moved = FORM_TYPES[formType]?.movedSections || {};
   const seen = new Set();
   const questions = [];
   for (const item of Array.isArray(raw?.questions) ? raw.questions : []) {
     if (questions.length >= LIMITS.questions) break;
     const meta = QUESTION_TYPES[item?.type];
     const id = text(item?.id, 40);
-    if (!meta || !id || seen.has(id) || !sections.has(item?.section)) continue;
+    const section = moved[item?.section] || item?.section;
+    if (!meta || !id || seen.has(id) || !sections.has(section)) continue;
     seen.add(id);
     const question = {
       id,
-      section: item.section,
+      section,
       type: item.type,
       label: text(item.label, LIMITS.label),
       help: text(item.help, LIMITS.help),

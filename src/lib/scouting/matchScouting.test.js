@@ -6,9 +6,11 @@ import {
   autoRobotCollision,
   canExtendAutoPath,
   continueAutoPath,
+  normalizeDefense,
   parseAutoPointsEstimate,
   robotBoundsAtAutoPoint,
   validateMatchScoutForm,
+  validateDefense,
   validatePerformanceRatings,
   validateRobotCondition
 } from './matchScouting.js';
@@ -162,5 +164,32 @@ describe('robot no-show', () => {
   it('keeps every question required when the robot showed up or nobody answered', () => {
     expect(validateMatchScoutForm({ scout_name: 'Sam', robot_present: true })).not.toBeNull();
     expect(validateRobotCondition({ scout_name: 'Sam' })).not.toBeNull();
+  });
+});
+
+describe('defense targets', () => {
+  const answer = (targets) => ({
+    teleop_notes: 'Pinned them at the hub.',
+    defense: { targets, periods: ['active'], shifts: ['shift1'], effectiveness: 6 }
+  });
+
+  it('submits with one defended robot', () => {
+    expect(validateDefense(answer(['frc254']))).toBeNull();
+  });
+
+  it('submits with only a B team defended (TBA keys like frc4414B)', () => {
+    expect(validateDefense(answer(['frc4414B']))).toBeNull();
+  });
+
+  it('keeps B teams next to normal teams instead of dropping them', () => {
+    expect(normalizeDefense({ targets: ['frc254', 'frc4414B', '9084b'] }).targets).toEqual([
+      'frc254',
+      'frc4414B',
+      'frc9084B'
+    ]);
+  });
+
+  it('still drops keys that are not teams', () => {
+    expect(normalizeDefense({ targets: ['frc254', 'abc', 'frc4414BB', ''] }).targets).toEqual(['frc254']);
   });
 });

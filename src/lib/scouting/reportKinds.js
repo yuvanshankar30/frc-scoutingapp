@@ -36,10 +36,20 @@ export const KIND_ONLY_FIELDS = Object.freeze({
     'shuttle_max',
     'shuttle_average',
     'shuttle_rating',
-    'shuttle_notes'
+    'shuttle_notes',
+    'defense'
   ]),
-  performance: Object.freeze(['offense_rating', 'defense_rating', 'performance_notes']),
-  robot: Object.freeze(['fouls_minor', 'fouls_major', 'break_details', 'break_impact', 'break_response'])
+  performance: Object.freeze(['offense_rating', 'defense_rating', 'performance_notes', 'bps']),
+  robot: Object.freeze([
+    'fouls_minor',
+    'fouls_major',
+    'break_details',
+    'break_impact',
+    'break_response',
+    'robot_status_shifts',
+    'foul_nature',
+    'foul_details'
+  ])
 });
 
 /** The report with every field that belongs to another kind cleared. */

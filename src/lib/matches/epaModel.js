@@ -2,7 +2,7 @@
 // alliance's score, in points, so an alliance's prediction is the sum of
 // its three robots.
 //
-// V2 (#171) fits every played match at once instead of nudging ratings one
+// V2 fits every played match at once instead of nudging ratings one
 // match at a time, and anchors each team to what our own scouts saw:
 //
 //   minimise  sum over alliances (score - sum of its 3 ratings)^2

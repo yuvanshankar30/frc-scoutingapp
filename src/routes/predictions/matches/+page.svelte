@@ -53,7 +53,7 @@
 
 <section class="pm-panel">
   {#if $isPhone}
-    <!-- Phone (#124): one row per match with the pick and a big Predict / View button. -->
+    <!-- Phone: one row per match with the pick and a big Predict / View button. -->
     <ul class="pm-mrows">
       {#each filtered as m}
         <li>
@@ -333,7 +333,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .pm-mrows-teams span {
       white-space: normal;

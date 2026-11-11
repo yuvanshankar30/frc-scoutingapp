@@ -1,5 +1,5 @@
 <script>
-  // Strategy (#187): a Team View-style brief for any team at the event, with the team list beside it (a bottom
+  // Strategy: a Team View-style brief for any team at the event, with the team list beside it (a bottom
   // sheet on phones), your team's next matches on top, and Scout accuracy as its own tab. Numbers come from the event's
   // EPA model (official scores anchored to our scouting, #171), match scouting, pit scouting and TBA rankings.
   import { onMount } from 'svelte';
@@ -9,6 +9,7 @@
   import Select from '$lib/components/common/Select.svelte';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
   import ScoutAccuracy from '$lib/components/strategy/ScoutAccuracy.svelte';
+  import StrategyMeetings from '$lib/components/strategy/StrategyMeetings.svelte';
   import StrategyTeamBrief from '$lib/components/strategy/StrategyTeamBrief.svelte';
   import { getAuthHeader } from '$lib/app/supabase.js';
   import { fetchWithCache } from '$lib/app/offlineCache.js';
@@ -42,7 +43,7 @@
   let teamSearch = '';
   let sortKey = 'epa';
   let selectedTeamKey = '';
-  let view = 'teams'; // 'teams' | 'accuracy'
+  let view = 'teams'; // 'teams' | 'meetings' | 'accuracy'
   // Phones open the brief in a sheet only when a team is tapped; desktop always shows one.
   let sheetOpen = false;
 
@@ -60,6 +61,12 @@
   // Performance scouts rank every robot they watched, so a team's power rank comes from all reports, not only its own.
   $: powerRankByTeam = new Map(averagePowerRankings(entries).teams.map((team) => [team.team_key, team]));
   $: nameByTeam = new Map(eventTeams.map((team) => [team.key, team.nickname || team.name || '']));
+  // Each team's strat person's phone, from pit scouting, for the Meetings tab.
+  $: phoneByTeam = new Map(
+    rows
+      .map((row) => [row.teamKey, String(row.pitEntry?.technical_details?.strat_phone || '').trim()])
+      .filter(([, phone]) => phone)
+  );
   $: items = rows.map((row) => ({
     row,
     name: nameByTeam.get(row.teamKey) || '',
@@ -318,6 +325,12 @@
       >
       <button
         role="tab"
+        aria-selected={view === 'meetings'}
+        class:on={view === 'meetings'}
+        on:click={() => (view = 'meetings')}>Meetings</button
+      >
+      <button
+        role="tab"
         aria-selected={view === 'accuracy'}
         class:on={view === 'accuracy'}
         on:click={() => (view = 'accuracy')}>Scout accuracy</button
@@ -328,6 +341,19 @@
 
     {#if view === 'accuracy'}
       <ScoutAccuracy matches={scheduledMatches} {entries} />
+    {:else if view === 'meetings'}
+      <StrategyMeetings
+        matches={scheduledMatches}
+        teamKey={OUR_TEAM_KEY}
+        {phoneByTeam}
+        {nameByTeam}
+        onSelectTeam={(key) => {
+          // Only leave Meetings when the partner is on the board, or the tap would land on an empty brief.
+          if (!itemByTeam.has(key)) return;
+          view = 'teams';
+          selectTeam(key);
+        }}
+      />
     {:else}
       <div class="board">
         <aside class="team-list" aria-label="Teams">

@@ -1098,7 +1098,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   @media (max-width: 900px) {
     .tba-header {
       display: grid;
@@ -1231,7 +1231,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .match-row-name,
     .match-row-time {

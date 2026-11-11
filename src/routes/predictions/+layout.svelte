@@ -252,7 +252,7 @@
     color: var(--pm-text);
   }
 
-  /* Phone (#124): event picker and Elo on one line, the sections as a swipeable tab row under them.
+  /* Phone: event picker and Elo on one line, the sections as a swipeable tab row under them.
      The app's bottom bar already leads back home, so the back link is left to desktop. */
   @media (max-width: 900px) {
     .pm-topbar {

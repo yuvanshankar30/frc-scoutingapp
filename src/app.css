@@ -2865,7 +2865,7 @@ textarea:focus,
   }
 }
 
-/* Data tables on phones (#124): each row becomes a card, each cell a "label: value" line, the first
+/* Data tables on phones: each row becomes a card, each cell a "label: value" line, the first
    column as the card's title. Cells are labelled by src/lib/ui/responsiveTables.js; a table opts out
    with data-keep-table. Desktop and tablets keep the real table. */
 @media (max-width: 640px) {
@@ -2937,7 +2937,7 @@ textarea:focus,
   }
 }
 
-/* Phones scale with their own size (#124): rem follows the screen width, so a 320px SE and a
+/* Phones scale with their own size: rem follows the screen width, so a 320px SE and a
    430px Pro Max both get a layout sized for them rather than one fixed size. 375px ~ 15px,
    390px ~ 15.6px, 430px ~ 17px. Form fields never drop below 16px (iOS zooms into smaller ones). */
 @media (max-width: 640px) {
@@ -2955,7 +2955,7 @@ textarea:focus,
   --screen-avail: calc(100 * var(--vh) - 3rem - var(--safe-top) - var(--dock-height) - var(--space-3) - var(--space-4));
 }
 
-/* Less scrolling on phones (#124): page headers drop their one-line descriptions and shrink,
+/* Less scrolling on phones: page headers drop their one-line descriptions and shrink,
    and cards / panels use tighter padding, so more of each page fits on the first screen. */
 @media (max-width: 900px) {
   .page-header {
@@ -2992,7 +2992,7 @@ label:has(> .select),
   min-width: 0;
 }
 
-/* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+/* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
 @media (max-width: 900px) {
   .workflow-tag,
   .suggest-pop button span {

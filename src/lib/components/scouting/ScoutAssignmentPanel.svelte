@@ -1507,7 +1507,7 @@
     margin-top: var(--gap-2);
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .who b,
     .assignment-table td {

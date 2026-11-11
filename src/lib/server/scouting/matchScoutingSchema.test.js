@@ -7,10 +7,21 @@ import {
   sectionFields,
   normalizePitProblemReport,
   normalizeRatings,
+  normalizeRankedTeamKey,
   normalizeTeamKey,
   requiresPitProblemReport,
   validatePitProblemHandoff
 } from './matchScoutingSchema.js';
+
+describe('normalizeRankedTeamKey', () => {
+  it('accepts team numbers with an optional one-letter suffix, in TBA form', () => {
+    expect(normalizeRankedTeamKey('frc4414B')).toBe('frc4414B');
+    expect(normalizeRankedTeamKey(' 4414b ')).toBe('frc4414B');
+    expect(normalizeRankedTeamKey('frc5940')).toBe('frc5940');
+    for (const bad of ['', null, 'frc', 'abc', 'frc4414BB', '123456', 'frcB'])
+      expect(normalizeRankedTeamKey(bad)).toBeNull();
+  });
+});
 
 describe('normalizeTeamKey', () => {
   it('accepts the forms a scout or a query string actually supplies', () => {
@@ -258,6 +269,21 @@ describe('normalizePowerRanking', () => {
       frc1678: 3
     });
     expect(normalizePowerRanking({})).toEqual({});
+  });
+
+  it('keeps B teams (TBA keys like frc4414B) instead of dropping the whole ranking', () => {
+    expect(
+      normalizePowerRanking({ frc4414B: 1, frc9084b: 2, frc254: 3, ' FRC973B ': 4, frc1678: 5, frc5940: 6 })
+    ).toEqual({
+      frc4414B: 1,
+      frc9084B: 2,
+      frc254: 3,
+      frc973B: 4,
+      frc1678: 5,
+      frc5940: 6
+    });
+    expect(normalizePowerRanking({ frc4414B: 1, frc4414b: 2 })).toEqual({});
+    expect(normalizePowerRanking({ frc4414BB: 1 })).toEqual({});
   });
 
   it('drops the whole ranking rather than storing a duplicated or invalid rank', () => {

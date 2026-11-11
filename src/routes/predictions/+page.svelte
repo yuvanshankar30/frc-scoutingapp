@@ -98,7 +98,7 @@
           <a href="/predictions/matches" class="pm-link">View All</a>
         </div>
         {#if $isPhone}
-          <!-- Phone (#124): one row per match. -->
+          <!-- Phone: one row per match. -->
           <ul class="pm-rows">
             {#each upcoming as m}
               {@const d = deltaFor(m)}
@@ -561,7 +561,7 @@
     font-size: 0.75rem;
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .pm-rows-teams span {
       white-space: normal;

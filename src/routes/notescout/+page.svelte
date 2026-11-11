@@ -628,7 +628,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   .grid-2.ph-write > .card:nth-child(2),
   .grid-2.ph-read > .card:nth-child(1) {
     display: none;

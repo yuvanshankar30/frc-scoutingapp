@@ -1,4 +1,4 @@
-// The cleanup plan (#125): which items would be deleted, from sizes, the per-event inventory and the policy. Pure, so
+// The cleanup plan: which items would be deleted, from sizes, the per-event inventory and the policy. Pure, so
 // the admin page, the daily check and the approve action all compute exactly the same plan.
 import { createHash } from 'node:crypto';
 import { CLEANABLE_BUCKETS, CLEANABLE_TABLES, RETENTION_POLICY } from './policy.js';

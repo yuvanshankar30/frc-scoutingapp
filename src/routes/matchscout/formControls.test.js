@@ -7,7 +7,7 @@ describe('match scouting field cues and rating controls', () => {
   it('has no standalone Unknown rating button or schematic fallback', () => {
     expect(source).not.toMatch(/>Unknown<\/button>/);
     expect(source).not.toContain('Schematic cue');
-    expect(source).toContain('aria-pressed={ratings[field] === value}');
+    expect(source).toContain("aria-pressed={ratings['Shot accuracy'] === value}");
   });
 
   it('keeps click-again deselection and clears the unjudged marker when re-rated', () => {

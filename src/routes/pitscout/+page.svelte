@@ -1,8 +1,8 @@
 <script>
   import { matchLabel } from '$lib/matches/matchKeys.js';
   import { compressPhoto } from '$lib/ui/compressPhoto.js';
-  import { suggest } from '$lib/ui/suggest.js';
   import Select from '$lib/components/common/Select.svelte';
+  import { ChevronLeft } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { authFetch, getAuthHeader, supabase } from '$lib/app/supabase.js';
@@ -12,6 +12,7 @@
     fetchManualScoutingTeams
   } from '$lib/scouting/scoutingEvent.js';
   import { submitOrQueue } from '$lib/app/offlineQueue.js';
+  import { rejectAfter } from '$lib/app/withTimeout.js';
   import CustomQuestions from '$lib/components/forms/CustomQuestions.svelte';
   import { fetchLiveForm } from '$lib/scouting/forms/formsClient.js';
   import {
@@ -20,8 +21,7 @@
     firstMissing,
     isAnswered,
     questionsIn,
-    sanitizeAnswers,
-    sectionItems
+    sanitizeAnswers
   } from '$lib/scouting/forms/formSchema.js';
   import { fetchWithCache } from '$lib/app/offlineCache.js';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
@@ -31,25 +31,20 @@
   import { isPhone } from '$lib/stores/device.js';
   import {
     AUTO_TOOL_OPTIONS,
-    BUMPER_FOAM_OPTIONS,
-    CLIMB_OPTIONS,
     COPROCESSOR_OPTIONS,
-    DRIVEBASE_OPTIONS,
-    ENCODER_TYPE_OPTIONS,
     HOPPER_OPTIONS,
     MAIN_BREAKER_OPTIONS,
     MAX_AUTO_DESCRIPTION_LENGTH,
     MAX_AUTO_NAME_LENGTH,
     MAX_AUTO_OPTIONS,
-    MAX_BREAKING_COMPONENT_LENGTH,
-    MOTOR_CONTROLLER_OPTIONS,
-    MOTOR_TYPE_OPTIONS,
-    NO_CLIMB_OPTION,
+    MAX_DRIVEBASE_LENGTH,
+    MAX_ROBOT_WEIGHT_LENGTH,
+    MAX_STRENGTHS_LENGTH,
+    MAX_WEAKNESSES_LENGTH,
+    PREFERRED_ROLE_OPTIONS,
     PIT_STATUS,
     PROGRAMMING_LANGUAGE_OPTIONS,
-    SB_CONNECTOR_OPTIONS,
     SHOOTER_OPTIONS,
-    SWERVE_MODULE_OPTIONS,
     TECHNICAL_MULTI_OPTIONS,
     TRENCH_OR_BUMP_OPTIONS,
     VISION_OPTIONS,
@@ -65,6 +60,8 @@
   } from '$lib/scouting/pitForm.js';
 
   const ESTIMATED_BPS_SLIDER_MAX = 30;
+  // Per photo. Generous for a ~2 MB photo on a slow link, short enough that a stalled one does not block the save.
+  const PHOTO_UPLOAD_TIMEOUT_MS = 30000;
 
   let eventKey = ''; // globally active scouting event - writes always target this
   let selectedEventKey = null; // event being browsed for reading, if different from active
@@ -95,7 +92,6 @@
   // data" button, or anywhere else) opens straight to that team's entry
   // instead of leaving a scout on the team picker.
   let requestedTeamKey = '';
-  let pitContacts = [];
   let scout_name = '';
 
   let drivebase_type = '';
@@ -103,10 +99,9 @@
   let hopper_type = '';
   // Write-in text shown when the matching select above is set to 'Other' -
   // kept as separate fields (not folded into technical_details) because
-  // drivebase/shooter/hopper type are plain passthrough columns server-side
-  // with no fixed enum to validate against, unlike technical_details' single
-  // -select fields.
-  let drivebase_type_other = '';
+  // shooter/hopper type are plain passthrough columns server-side with no
+  // fixed enum to validate against. The drivebase is one described text
+  // answer (e.g. "Swerve, MK5n modules"), so it needs no write-in.
   let shooter_type_other = '';
   let hopper_type_other = '';
   let human_player_balls_in_auto = '';
@@ -123,9 +118,10 @@
     custom_answers: true
   };
   let schemaWarning = '';
+  // No longer asked (V4.46.0), but an older report's archetype and climbs are
+  // sent back unchanged so resaving a team never wipes them.
   let robot_archetype = '';
   let additional_notes = '';
-  let likely_breaking_component = '';
   let estimated_bps = undefined;
   let auto_points_estimate = '';
   let climb_options = [];
@@ -135,85 +131,41 @@
   let pendingFiles = [];
   // Pit scouting is done standing in a noisy pit with a phone in one hand,
   // talking to a team that volunteers information in whatever order it likes.
-  // A single 600-line scroll of ~40 selects is the wrong shape for that: you
-  // cannot tell what is still missing, and you cannot jump to the thing the
-  // team just mentioned. Topics are answered one at a time, jumpable in any
-  // order, with the remaining count always visible so a scout knows when they
-  // can walk away.
-  // Main: the fields on the reference pit scouting form (one page, direct
-  // instruction) plus photos. Everything else that used to live in its own
-  // top-level topic (Basics' leftovers, Mechanisms, the rest of Electrical/
-  // Controls, Structure, Ratings) now lives under one "Extra" topic, picked
-  // with a dropdown instead of its own rail button - still jumpable, just
-  // not competing with Main for a scout's attention.
-  const EXTRA_GROUPS = [
-    { id: 'setup', label: 'Contact & Setup' },
-    { id: 'mechanisms', label: 'Mechanisms' },
-    { id: 'electrical', label: 'Electrical' },
-    { id: 'controls', label: 'Controls' },
-    { id: 'structure', label: 'Structure' },
-    { id: 'ratings', label: 'Ratings' }
-  ];
-
-  // Which answers belong to which group, for the per-topic counts. Kept
-  // explicit rather than derived from the markup so a field moving between
-  // groups is a deliberate edit, not a silent change in what "complete" means.
-  const MAIN_DETAIL_FIELDS = [
-    'main_breaker_brand',
-    'main_breaker_shroud',
-    'uses_canivore',
-    'can_bus_count',
-    'trench_or_bump',
-    'hopper_capacity'
-  ];
-  const EXTRA_GROUP_DETAIL_FIELDS = {
-    setup: ['pit_contact_phone'],
-    mechanisms: ['use_net', 'intake_style', 'ground_roller_motor_count', 'motor_controllers', 'motor_types'],
-    electrical: ['sb_connector'],
-    controls: ['coprocessor', 'uses_wpilib', 'auto_tools', 'vision', 'programming_language', 'software_other'],
-    structure: [
-      'swerve_module',
-      'drivetrain_length',
-      'drivetrain_width',
-      'drivetrain_height',
-      'bumper_width',
-      'bumper_height',
-      'bumper_length',
-      'bumper_foam',
-      'fits_under_trench',
-      'drives_over_mound',
-      'printed_roller_hubs',
-      'roller_hub_material',
-      'encoder_types'
-    ],
-    ratings: ['drivebase_rating', 'electrical_rating', 'overall_reliability_rating']
-  };
-
+  // Every question is on one Main page (the old Extra sub-pages were folded in
+  // or dropped in V4.46.0), with Photos as the only other tab, and each tab
+  // shows how much is still missing so a scout knows when they can walk away.
   let activeTopic = 'main';
-  let activeExtraGroup = 'setup';
   // Questions an admin added in Scouting Admin > Edit, and this scout's answers to them.
+  // Questions once added to the old Extra tab come back in the Main section (see formSchema's movedSections).
   let customForm = { version: 0, schema: emptyForm() };
   let customAnswers = {};
   let showMissing = false;
   $: layout = createLayout(customForm.schema, 'pit');
   $: orders = layout.orders;
   $: customMain = questionsIn(customForm.schema, 'main');
-  $: customExtra = questionsIn(customForm.schema, 'extra');
   const answeredCount = (questions) => questions.filter((question) => isAnswered(question, customAnswers)).length;
 
   const answered = (value) =>
     Array.isArray(value) ? value.length > 0 : value !== '' && value !== null && value !== undefined;
+  const pick = (keys) => Object.fromEntries(keys.map((key) => [key, technical_details[key]]));
 
   // The answers each built-in main question collects, so hiding one also takes it out of the progress count.
   $: allMainAnswers = {
-    'main.shooter': { shooter_type },
-    'main.hopper': { hopper_type },
-    'main.archetype': { robot_archetype },
-    'main.bps': { estimated_bps },
-    'main.autopoints': { auto_points_estimate },
-    'main.breaking': { likely_breaking_component },
-    'main.notes': { additional_notes },
-    'main.technical': Object.fromEntries(MAIN_DETAIL_FIELDS.map((key) => [key, technical_details[key]]))
+    'main.drivebase': { drivebase_type },
+    'main.dimensions': pick(['drivetrain_length', 'drivetrain_width', 'drivetrain_height']),
+    'main.weight': { robot_weight: technical_details.robot_weight },
+    'main.trench': { trench_or_bump: technical_details.trench_or_bump },
+    'main.shooter': { shooter_type, hopper_type, hopper_capacity: technical_details.hopper_capacity },
+    ...(pitSchema.estimated_bps ? { 'main.bps': { estimated_bps } } : {}),
+    'main.autos': { auto_options: autoOptions.length ? autoOptions : '' },
+    ...(pitSchema.auto_points_estimate ? { 'main.autoPoints': { auto_points_estimate } } : {}),
+    'main.roles': { preferred_roles: technical_details.preferred_roles },
+    'main.strengths': { strengths: technical_details.strengths },
+    'main.weaknesses': { weaknesses: technical_details.weaknesses },
+    'main.breaker': pick(['main_breaker_brand', 'main_breaker_shroud', 'canivore_count', 'can_bus_count']),
+    'main.controls': pick(['coprocessor', 'uses_wpilib', 'auto_tools', 'vision', 'programming_language']),
+    'main.contact': { strat_phone: technical_details.strat_phone },
+    'main.notes': { additional_notes }
   };
   $: mainAnswers = Object.assign(
     {},
@@ -227,78 +179,13 @@
   };
   $: photosProgress = { done: editablePhotoPaths.length + pendingFiles.length ? 1 : 0, total: 1 };
 
-  $: visibleGroupIds = new Set(extraGroups.map((group) => group.id));
-  $: extraAnswers = {
-    ...(visibleGroupIds.has('setup')
-      ? {
-          scout_name,
-          drivebase_type,
-          climb_options: climb_options.length ? climb_options : '',
-          auto_options: autoOptions.length ? autoOptions : ''
-        }
-      : {}),
-    ...Object.fromEntries(
-      Object.entries(EXTRA_GROUP_DETAIL_FIELDS)
-        .filter(([id]) => visibleGroupIds.has(id))
-        .flatMap(([, keys]) => keys)
-        .map((key) => [key, technical_details[key]])
-    )
-  };
-  $: extraProgress = {
-    done: Object.values(extraAnswers).filter(answered).length + answeredCount(customExtra),
-    total: Object.keys(extraAnswers).length + customExtra.length
-  };
-
   $: topicStates = [
     { id: 'main', label: 'Main', ...mainProgress },
-    { id: 'extra', label: 'Extra', ...extraProgress },
     { id: 'photos', label: 'Photos', ...photosProgress }
   ];
-  // The Extra pages in the order the form sets, minus hidden ones and with their own wording.
-  $: extraGroups = [
-    ...sectionItems(customForm.schema, 'pit', 'extra')
-      .filter((item) => item.kind === 'core' && !item.view.hidden)
-      .map((item) => ({
-        ...EXTRA_GROUPS.find((group) => `extra.${group.id}` === item.block.key),
-        label: item.view.label
-      })),
-    ...(customExtra.length ? [{ id: 'added', label: 'Added questions' }] : [])
-  ];
-  $: if (!extraGroups.some((group) => group.id === activeExtraGroup)) activeExtraGroup = extraGroups[0]?.id ?? 'setup';
-  $: extraGroupStates = extraGroups.map((group) =>
-    group.id === 'added'
-      ? { ...group, done: answeredCount(customExtra), total: customExtra.length }
-      : {
-          ...group,
-          done:
-            (EXTRA_GROUP_DETAIL_FIELDS[group.id] || []).filter((key) => answered(technical_details[key])).length +
-            (group.id === 'setup'
-              ? [
-                  scout_name,
-                  drivebase_type,
-                  climb_options.length ? climb_options : '',
-                  autoOptions.length ? autoOptions : ''
-                ].filter(answered).length
-              : 0),
-          total: (EXTRA_GROUP_DETAIL_FIELDS[group.id] || []).length + (group.id === 'setup' ? 4 : 0)
-        }
-  );
   let photoInputKey = 0;
   let photoInput;
   let prefersCameraCapture = false;
-
-  function setClimbOption(option, checked) {
-    if (option === NO_CLIMB_OPTION) {
-      climb_options = checked ? [NO_CLIMB_OPTION] : [];
-      return;
-    }
-
-    const selected = new Set(normalizeClimbOptions(climb_options));
-    selected.delete(NO_CLIMB_OPTION);
-    if (checked) selected.add(option);
-    else selected.delete(option);
-    climb_options = CLIMB_OPTIONS.filter((value) => value !== NO_CLIMB_OPTION && selected.has(value));
-  }
 
   function setTechnicalMulti(field, option, checked) {
     const allowed = TECHNICAL_MULTI_OPTIONS[field] || [];
@@ -309,6 +196,10 @@
       ...technical_details,
       [field]: allowed.filter((value) => selected.has(value))
     };
+  }
+
+  function togglePreferredRole(option) {
+    setTechnicalMulti('preferred_roles', option, !hasTechnicalMulti('preferred_roles', option));
   }
 
   function hasTechnicalMulti(field, option) {
@@ -372,18 +263,26 @@
     scout_name = entry?.scout_name || '';
     customAnswers = { ...(entry?.custom_answers || {}) };
     showMissing = false;
-    [drivebase_type, drivebase_type_other] = splitOtherOption(entry?.drivebase_type, DRIVEBASE_OPTIONS);
+    drivebase_type = String(entry?.drivebase_type || '').slice(0, MAX_DRIVEBASE_LENGTH);
     [shooter_type, shooter_type_other] = splitOtherOption(entry?.shooter_type, SHOOTER_OPTIONS);
     [hopper_type, hopper_type_other] = splitOtherOption(entry?.hopper_type, HOPPER_OPTIONS);
     human_player_balls_in_auto = entry?.human_player_balls_in_auto || '';
     robot_archetype = String(entry?.robot_archetype || '').slice(0, 80);
     additional_notes = String(entry?.additional_notes || '');
-    likely_breaking_component = entry?.likely_breaking_component || '';
     estimated_bps = hasEstimatedBps(entry?.estimated_bps) ? Number(entry.estimated_bps) : undefined;
     auto_points_estimate = entry?.auto_points_estimate || '';
     climb_options = normalizeClimbOptions(entry?.climb_options || []);
     autoOptions = normalizeAutoOptions(entry?.auto_options || []);
     technical_details = normalizeTechnicalDetails(entry?.technical_details || {});
+    // Weaknesses and "what part is most likely to break" are one question now. An older report's break answer
+    // is folded into its weaknesses (once), so the scout sees and edits both in the one box.
+    const oldBreak = String(entry?.likely_breaking_component || '').trim();
+    if (oldBreak && !technical_details.weaknesses.includes(oldBreak)) {
+      technical_details.weaknesses = [technical_details.weaknesses, oldBreak]
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, MAX_WEAKNESSES_LENGTH);
+    }
     editablePhotoPaths = [...(entry?.photo_paths || [])];
     pendingFiles = [];
     photoInputKey += 1;
@@ -469,15 +368,6 @@
     }
     entriesByTeam = next;
     return next;
-  }
-
-  async function loadPitContacts() {
-    const eventParam = resolvedEventKey ? `&event_key=${encodeURIComponent(resolvedEventKey)}` : '';
-    const res = await authFetch(`/pitscout?resource=pit-contacts${eventParam}`);
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data?.success) return [];
-    pitContacts = data.data || [];
-    return pitContacts;
   }
 
   async function loadProblems() {
@@ -574,12 +464,7 @@
         return;
       }
 
-      const [loadedTeams, loadedEntries] = await Promise.all([
-        loadTeams(),
-        loadEntries(),
-        loadProblems(),
-        loadPitContacts()
-      ]);
+      const [loadedTeams, loadedEntries] = await Promise.all([loadTeams(), loadEntries(), loadProblems()]);
       teams = [...new Set([...loadedTeams, ...Object.keys(loadedEntries)])].sort(teamSort);
       if (requestedTeamKey && teams.includes(requestedTeamKey)) {
         selectedTeam = requestedTeamKey;
@@ -695,9 +580,15 @@
         const path = `${eventKey}/${teamKey}/${fileName}`;
 
         try {
-          const { error } = await supabase.storage
-            .from('pit-scout-photos')
-            .upload(path, file, { upsert: false, contentType: file.type || 'image/jpeg' });
+          // A stalled upload (weak pit Wi-Fi or cell) would otherwise hold the whole save on "Saving…" forever: count
+          // it as failed after PHOTO_UPLOAD_TIMEOUT_MS so the notes still save or queue.
+          const { error } = await rejectAfter(
+            supabase.storage
+              .from('pit-scout-photos')
+              .upload(path, file, { upsert: false, contentType: file.type || 'image/jpeg' }),
+            PHOTO_UPLOAD_TIMEOUT_MS,
+            'Photo upload timed out'
+          );
 
           if (error) throw new Error(error.message || 'Upload failed');
           uploadedPaths.push(path);
@@ -715,7 +606,8 @@
   async function saveEntry() {
     if (!selectedTeam || !eventKey) return;
 
-    const normalizedLikelyBreakingComponent = normalizeLikelyBreakingComponent(likely_breaking_component);
+    // The merged weaknesses answer also fills the old "likely to break" column, which Strategy and the assistant read.
+    const normalizedLikelyBreakingComponent = normalizeLikelyBreakingComponent(technical_details.weaknesses);
     const normalizedEstimatedBps = hasEstimatedBps(estimated_bps)
       ? Math.round(Number(estimated_bps) * 100) / 100
       : null;
@@ -724,19 +616,18 @@
 
     const normalizedAutoOptions = filledAutoOptions(autoOptions);
     if (normalizedAutoOptions.some((option) => !option.name || !option.description)) {
-      alert('Each auto option needs both a name and description.');
+      apiNote = 'Each auto needs both a name and a description.';
       return;
     }
 
     if (editablePhotoPaths.length + pendingFiles.length > 3) {
-      alert('You can only save up to 3 photos.');
+      apiNote = 'You can only save up to 3 photos.';
       return;
     }
 
-    const missingAdded = firstMissing([...customMain, ...customExtra], customAnswers);
+    const missingAdded = firstMissing(customMain, customAnswers);
     if (missingAdded) {
-      activeTopic = missingAdded.section === 'extra' ? 'extra' : 'main';
-      if (activeTopic === 'extra') activeExtraGroup = 'added';
+      activeTopic = 'main';
       showMissing = true;
       apiNote = `Answer “${missingAdded.label}” before saving.`;
       return;
@@ -764,7 +655,9 @@
         event_key: eventKey,
         team_key: selectedTeam,
         ...(pitSchema.scout_name ? { scout_name: String(scout_name || '').trim() } : {}),
-        drivebase_type: resolveOther(drivebase_type, drivebase_type_other),
+        drivebase_type: String(drivebase_type || '')
+          .trim()
+          .slice(0, MAX_DRIVEBASE_LENGTH),
         shooter_type: resolveOther(shooter_type, shooter_type_other),
         hopper_type: resolveOther(hopper_type, hopper_type_other),
         human_player_balls_in_auto,
@@ -867,6 +760,9 @@
     return map;
   }, {});
   $: selectedTeamProblems = selectedTeam ? problemsByTeam[selectedTeam] || [] : [];
+  // The entry form is open: its save message is drawn by the Submit button, not in the page header.
+  $: entryOpen = Boolean(selectedTeam) && activeView === 'teams';
+  $: phoneEntry = $isPhone && entryOpen;
 
   onMount(() => {
     void fetchLiveForm('pit').then((live) => {
@@ -890,8 +786,10 @@
   }
 </script>
 
-{#if $isPhone}
-  <!-- Phone (#124): event and three status counts; the event picker folds away. -->
+{#if phoneEntry}
+  <!-- Phone entry screen: the form draws its own pinned bar (team, Main/Photos), so the list header steps aside. -->
+{:else if $isPhone}
+  <!-- Phone: event and three status counts; the event picker folds away. -->
   <header class="pp-head">
     <div class="pp-stats">
       <span><b>{pendingCount}</b>to do</span>
@@ -920,7 +818,7 @@
       {#if resolvedEventKey}
         <div class="form-label" style="margin-top:0.25rem">Event: {resolvedEventKey}</div>
       {/if}
-      {#if apiNote}
+      {#if apiNote && !entryOpen}
         <div class="note" style="margin-top:0.5rem">{apiNote}</div>
       {/if}
       {#if schemaWarning}
@@ -952,14 +850,16 @@
   </div>
 {/if}
 
-<div class="view-tabs" aria-label="Pit Scouting sections">
-  <button class:active={activeView === 'teams'} type="button" on:click={() => (activeView = 'teams')}
-    >Team profiles</button
-  >
-  <button class:active={activeView === 'problems'} type="button" on:click={() => (activeView = 'problems')}>
-    Problems {#if openProblems.length}<span>{openProblems.length}</span>{/if}
-  </button>
-</div>
+{#if !phoneEntry}
+  <div class="view-tabs" aria-label="Pit Scouting sections">
+    <button class:active={activeView === 'teams'} type="button" on:click={() => (activeView = 'teams')}
+      >Team profiles</button
+    >
+    <button class:active={activeView === 'problems'} type="button" on:click={() => (activeView = 'problems')}>
+      Problems {#if openProblems.length}<span>{openProblems.length}</span>{/if}
+    </button>
+  </div>
+{/if}
 
 {#if activeView === 'problems'}
   <PitProblemsView
@@ -1019,52 +919,72 @@
     {/if}
   </div>
 {:else}
-  <form class="card entry-card" on:submit|preventDefault={saveEntry}>
-    <nav class="topic-rail" aria-label="Pit scouting topics">
-      {#each topicStates as topic}
-        <button
-          type="button"
-          class="topic-tab"
-          class:active={activeTopic === topic.id}
-          class:done={topic.done === topic.total}
-          on:click={() => (activeTopic = topic.id)}
-        >
-          <span class="topic-name">{topic.label}</span>
-          <span class="topic-count">{topic.done}/{topic.total}</span>
-        </button>
-        {#if topic.id === 'extra' && activeTopic === 'extra'}
-          <div class="extra-group-list" role="group" aria-label="More questions">
-            {#each extraGroupStates as group}
-              <button
-                type="button"
-                class="extra-group-item"
-                class:active={activeExtraGroup === group.id}
-                on:click={() => (activeExtraGroup = group.id)}
-              >
-                <span>{group.label}</span>
-                <span class="topic-count">{group.done}/{group.total}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      {/each}
-    </nav>
-
-    <div class="entry-content">
-      <div class="entry-header">
-        <button class="btn btn-secondary" type="button" on:click={goToTeamPicker}>Back</button>
-
-        <div>
-          <h3 style="margin:0">Team {displayTeam(selectedTeam)}</h3>
-          <div class="entry-subtitle">
-            {#if selectedEntry}
-              Existing pit entry loaded. Submitting again will update it.
-            {:else}
-              New pit entry.
-            {/if}
+  <form class="card entry-card" class:pp-entry={$isPhone} on:submit|preventDefault={saveEntry}>
+    {#if $isPhone}
+      <!-- Phone: its own entry screen. Back, the team and the two tabs stay pinned; Submit is docked above the bottom bar. -->
+      <div class="pp-entry-bar">
+        <div class="pp-entry-top">
+          <button class="pp-back" type="button" aria-label="Back to teams" on:click={goToTeamPicker}
+            ><ChevronLeft size={22} /></button
+          >
+          <div class="pp-entry-title">
+            <strong>Team {displayTeam(selectedTeam)}</strong>
+            <span>{selectedEntry ? 'Editing saved report' : 'New report'}</span>
           </div>
         </div>
+        <div class="pp-segments" role="tablist" aria-label="Pit scouting tabs">
+          {#each topicStates as topic}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTopic === topic.id}
+              class:active={activeTopic === topic.id}
+              class:done={topic.done === topic.total}
+              on:click={() => {
+                activeTopic = topic.id;
+                scrollToTop();
+              }}
+            >
+              <span>{topic.label}</span>
+              <small>{topic.done}/{topic.total}</small>
+            </button>
+          {/each}
+        </div>
       </div>
+    {:else}
+      <nav class="topic-rail" aria-label="Pit scouting topics">
+        {#each topicStates as topic}
+          <button
+            type="button"
+            class="topic-tab"
+            class:active={activeTopic === topic.id}
+            class:done={topic.done === topic.total}
+            on:click={() => (activeTopic = topic.id)}
+          >
+            <span class="topic-name">{topic.label}</span>
+            <span class="topic-count">{topic.done}/{topic.total}</span>
+          </button>
+        {/each}
+      </nav>
+    {/if}
+
+    <div class="entry-content">
+      {#if !$isPhone}
+        <div class="entry-header">
+          <button class="btn btn-secondary" type="button" on:click={goToTeamPicker}>Back</button>
+
+          <div>
+            <h3 style="margin:0">Team {displayTeam(selectedTeam)}</h3>
+            <div class="entry-subtitle">
+              {#if selectedEntry}
+                Existing pit entry loaded. Submitting again will update it.
+              {:else}
+                New pit entry.
+              {/if}
+            </div>
+          </div>
+        </div>
+      {/if}
 
       {#if isViewingPastEvent}
         <div class="note">
@@ -1101,239 +1021,481 @@
 
       {#if activeTopic === 'main'}
         <div class="pit-blocks">
+          {#if !layout.hidden('main.drivebase')}
+            <div class="blk" style="order:{orders.get('core:main.drivebase') ?? 0}">
+              <div class="form-group">
+                <label class="form-label" for="drivebaseInput">{layout.label('main.drivebase', 'Drivebase')}</label>
+                <input
+                  id="drivebaseInput"
+                  class="form-input"
+                  maxlength={MAX_DRIVEBASE_LENGTH}
+                  autocomplete="off"
+                  placeholder="e.g. Swerve, MK5n modules"
+                  bind:value={drivebase_type}
+                />
+                <small class="form-help">Type of drivebase and modules, in a few words.</small>
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.dimensions') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.dimensions') ?? 0}">
+              <div class="form-group">
+                <div class="form-label" id="dimensionsLabel">
+                  {layout.label('main.dimensions', 'Drivetrain dimensions (in)')}
+                </div>
+                <div class="dimension-grid" role="group" aria-labelledby="dimensionsLabel">
+                  {#each [['drivetrain_length', 'Length'], ['drivetrain_width', 'Width'], ['drivetrain_height', 'Height']] as [key, label]}
+                    <label class="dimension-field">
+                      <span>{label}</span>
+                      <input
+                        class="form-input"
+                        type="number"
+                        inputmode="decimal"
+                        min="0"
+                        step="0.01"
+                        bind:value={technical_details[key]}
+                      />
+                    </label>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.weight') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.weight') ?? 0}">
+              <div class="form-group">
+                <label class="form-label" for="robotWeightInput"
+                  >{layout.label('main.weight', 'Robot weight (without bumpers and battery)')}</label
+                >
+                <input
+                  id="robotWeightInput"
+                  class="form-input"
+                  maxlength={MAX_ROBOT_WEIGHT_LENGTH}
+                  autocomplete="off"
+                  placeholder="e.g. 112 lb"
+                  bind:value={technical_details.robot_weight}
+                />
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.trench') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.trench') ?? 0}">
+              <div class="form-group">
+                <div class="form-label" id="trenchOrBumpLabel">
+                  {layout.label('main.trench', 'Trench, bump or both?')}
+                </div>
+                <div class="choice-chips even" role="radiogroup" aria-labelledby="trenchOrBumpLabel">
+                  {#each TRENCH_OR_BUMP_OPTIONS as option}
+                    <button
+                      type="button"
+                      class="choice-chip"
+                      role="radio"
+                      aria-checked={technical_details.trench_or_bump === option}
+                      class:selected={technical_details.trench_or_bump === option}
+                      on:click={() =>
+                        (technical_details.trench_or_bump = technical_details.trench_or_bump === option ? '' : option)}
+                      >{option}</button
+                    >
+                  {/each}
+                </div>
+                <small class="form-help">How they get between the zones. Tap again to clear.</small>
+              </div>
+            </div>
+          {/if}
+
           {#if !layout.hidden('main.shooter')}
             <div class="blk" style="order:{orders.get('core:main.shooter') ?? 0}">
               <div class="form-group">
-                <label class="form-label" for="shooterSelect">{layout.label('main.shooter', 'Shooter Type')}</label>
-                <Select id="shooterSelect" class="form-select" bind:value={shooter_type}>
-                  <option value="">-- Select --</option>
-                  {#each SHOOTER_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-                {#if shooter_type === 'Other'}
-                  <input class="form-input" maxlength="60" placeholder="What kind?" bind:value={shooter_type_other} />
-                {/if}
-              </div>
-            </div>
-          {/if}
-
-          {#if !layout.hidden('main.hopper')}
-            <div class="blk" style="order:{orders.get('core:main.hopper') ?? 0}">
-              <div class="form-group">
-                <label class="form-label" for="hopperSelect">{layout.label('main.hopper', 'Indexer Type')}</label>
-                <Select id="hopperSelect" class="form-select" bind:value={hopper_type}>
-                  <option value="">-- Select --</option>
-                  {#each HOPPER_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-                {#if hopper_type === 'Other'}
-                  <input class="form-input" maxlength="60" placeholder="What kind?" bind:value={hopper_type_other} />
-                {/if}
-              </div>
-            </div>
-          {/if}
-
-          {#if !layout.hidden('main.archetype')}
-            <div class="blk" style="order:{orders.get('core:main.archetype') ?? 0}">
-              {#if pitSchema.robot_archetype}
-                <div class="form-group">
-                  <label class="form-label" for="robotArchetypeInput"
-                    >{layout.label('main.archetype', 'Robot Role')}</label
-                  >
-                  <input
-                    id="robotArchetypeInput"
-                    class="form-input"
-                    maxlength="80"
-                    placeholder="e.g. shooter, shuttler, hybrid"
-                    bind:value={robot_archetype}
-                  />
+                <div class="form-label">{layout.label('main.shooter', 'Shooter and indexer')}</div>
+                <div class="field-grid">
+                  <div class="sub-field">
+                    <label class="sub-label" for="shooterSelect">Shooter type</label>
+                    <Select id="shooterSelect" class="form-select" bind:value={shooter_type}>
+                      <option value="">-- Select --</option>
+                      {#each SHOOTER_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </Select>
+                    {#if shooter_type === 'Other'}
+                      <input
+                        class="form-input"
+                        maxlength="60"
+                        placeholder="What kind?"
+                        bind:value={shooter_type_other}
+                      />
+                    {/if}
+                  </div>
+                  <div class="sub-field">
+                    <label class="sub-label" for="hopperSelect">Indexer type</label>
+                    <Select id="hopperSelect" class="form-select" bind:value={hopper_type}>
+                      <option value="">-- Select --</option>
+                      {#each HOPPER_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </Select>
+                    {#if hopper_type === 'Other'}
+                      <input
+                        class="form-input"
+                        maxlength="60"
+                        placeholder="What kind?"
+                        bind:value={hopper_type_other}
+                      />
+                    {/if}
+                  </div>
+                  {#if pitSchema.technical_details}
+                    <div class="sub-field">
+                      <label class="sub-label" for="hopperCapacityInput">Hopper capacity</label>
+                      <input
+                        id="hopperCapacityInput"
+                        class="form-input"
+                        type="number"
+                        inputmode="numeric"
+                        min="0"
+                        step="1"
+                        placeholder="e.g. 5"
+                        bind:value={technical_details.hopper_capacity}
+                      />
+                    </div>
+                  {/if}
                 </div>
-              {/if}
+              </div>
             </div>
           {/if}
 
-          {#if !layout.hidden('main.bps')}
+          {#if !layout.hidden('main.bps') && pitSchema.estimated_bps}
             <div class="blk" style="order:{orders.get('core:main.bps') ?? 0}">
-              {#if pitSchema.estimated_bps}
-                <div class="form-group">
-                  <label class="form-label" for="estimatedBpsInput">{layout.label('main.bps', 'Estimated BPS')}</label>
+              <div class="form-group">
+                <label class="form-label" for="estimatedBpsInput">{layout.label('main.bps', 'Estimated BPS')}</label>
+                <div class="estimated-bps-slider">
+                  <input
+                    type="range"
+                    min="0"
+                    max={ESTIMATED_BPS_SLIDER_MAX}
+                    step="0.1"
+                    value={estimatedBpsSliderValue(estimated_bps)}
+                    aria-label="Estimated BPS"
+                    on:input={(event) => setEstimatedBpsFromSlider(event.currentTarget.value)}
+                  />
                   <input
                     id="estimatedBpsInput"
-                    class="form-input"
+                    class="form-input bps-input"
                     type="number"
+                    inputmode="decimal"
                     min="0"
                     step="0.1"
                     bind:value={estimated_bps}
-                    placeholder="e.g. 2.4"
+                    placeholder="—"
                   />
-                  <div class="estimated-bps-slider">
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.autos') && pitSchema.auto_options}
+            <div class="blk" style="order:{orders.get('core:main.autos') ?? 0}">
+              <div class="form-group">
+                <div class="auto-options-header">
+                  <div class="form-label">{layout.label('main.autos', 'Autos')}</div>
+                  <button
+                    class="btn btn-outline"
+                    type="button"
+                    on:click={addAutoOption}
+                    disabled={autoOptions.length >= MAX_AUTO_OPTIONS}
+                  >
+                    Add Auto
+                  </button>
+                </div>
+                <small class="form-help">{autoOptions.length}/{MAX_AUTO_OPTIONS} autos listed</small>
+
+                {#if !autoOptions.length}
+                  <div class="auto-options-empty">No autos yet. Add one and draw its path.</div>
+                {:else}
+                  <div class="auto-option-editor-list">
+                    {#each autoOptions as option, idx}
+                      <div class="card auto-option-editor">
+                        <div class="auto-option-editor-header">
+                          <strong>Auto {idx + 1}</strong>
+                          <button class="btn btn-outline btn-sm" type="button" on:click={() => removeAutoOption(idx)}>
+                            Remove
+                          </button>
+                        </div>
+
+                        <input
+                          class="form-input"
+                          type="text"
+                          maxlength={MAX_AUTO_NAME_LENGTH}
+                          placeholder="Auto name"
+                          value={option.name}
+                          on:input={(event) => updateAutoOption(idx, 'name', event.currentTarget.value)}
+                        />
+
+                        <textarea
+                          class="form-input auto-option-description"
+                          rows="3"
+                          maxlength={MAX_AUTO_DESCRIPTION_LENGTH}
+                          placeholder="Short description of the path, starting spot, and scoring plan"
+                          value={option.description}
+                          on:input={(event) => updateAutoOption(idx, 'description', event.currentTarget.value)}
+                        ></textarea>
+                        <div class="pit-auto-route-heading">
+                          <span>Mirrored auto path</span>
+                          <div>
+                            <button
+                              class="btn btn-outline btn-sm"
+                              type="button"
+                              on:click={() => updateAutoOption(idx, 'name', 'Trench auto')}>Trench</button
+                            ><button
+                              class="btn btn-outline btn-sm"
+                              type="button"
+                              on:click={() => updateAutoOption(idx, 'name', 'Bump auto')}>Bump</button
+                            >
+                          </div>
+                        </div>
+                        <RebuiltFieldMap alliance="blue" bind:path={autoOptions[idx].path} />
+                        <small class="form-help"
+                          >Draw once in this mirrored field view; pit scouting does not need an alliance selection.</small
+                        >
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.autoPoints') && pitSchema.auto_points_estimate}
+            <div class="blk" style="order:{orders.get('core:main.autoPoints') ?? 0}">
+              <div class="form-group">
+                <label class="form-label" for="autoPointsEstimateInput"
+                  >{layout.label('main.autoPoints', 'How many points do you usually score in auto?')}</label
+                >
+                <input
+                  id="autoPointsEstimateInput"
+                  class="form-input"
+                  maxlength="40"
+                  placeholder="e.g. 10 or 5-15"
+                  bind:value={auto_points_estimate}
+                />
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.roles') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.roles') ?? 0}">
+              <div class="form-group">
+                <div class="form-label" id="preferredRolesLabel">
+                  {layout.label('main.roles', 'Preferred role in the game')}
+                </div>
+                <div class="choice-chips" role="group" aria-labelledby="preferredRolesLabel">
+                  {#each PREFERRED_ROLE_OPTIONS as option}
+                    <button
+                      type="button"
+                      class="choice-chip"
+                      aria-pressed={technical_details.preferred_roles.includes(option)}
+                      class:selected={technical_details.preferred_roles.includes(option)}
+                      on:click={() => togglePreferredRole(option)}>{option}</button
+                    >
+                  {/each}
+                </div>
+                <small class="form-help">Pick every role they'd be happy to play.</small>
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.strengths') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.strengths') ?? 0}">
+              <div class="form-group">
+                <label class="form-label" for="strengthsInput">{layout.label('main.strengths', 'Strengths')}</label>
+                <textarea
+                  id="strengthsInput"
+                  class="form-input"
+                  rows="3"
+                  maxlength={MAX_STRENGTHS_LENGTH}
+                  bind:value={technical_details.strengths}
+                  placeholder="What they do best, in their words and ours"
+                ></textarea>
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.weaknesses') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.weaknesses') ?? 0}">
+              <div class="form-group">
+                <label class="form-label" for="weaknessesInput"
+                  >{layout.label('main.weaknesses', 'Weaknesses and what is likely to break')}</label
+                >
+                <textarea
+                  id="weaknessesInput"
+                  class="form-input"
+                  rows="3"
+                  maxlength={MAX_WEAKNESSES_LENGTH}
+                  bind:value={technical_details.weaknesses}
+                  placeholder="What they struggle with, and the part most likely to fail"
+                ></textarea>
+              </div>
+            </div>
+          {/if}
+
+          {#if !layout.hidden('main.breaker') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.breaker') ?? 0}">
+              <div class="form-group">
+                <div class="form-label">Main breaker and CAN</div>
+                <div class="field-grid">
+                  <div class="sub-field">
+                    <label class="sub-label" for="mainBreakerBrandSelect">Main breaker brand</label>
+                    <Select
+                      id="mainBreakerBrandSelect"
+                      class="form-select"
+                      bind:value={technical_details.main_breaker_brand}
+                    >
+                      <option value="">-- Select --</option>
+                      {#each MAIN_BREAKER_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </Select>
+                  </div>
+                  <div class="sub-field">
+                    <label class="sub-label" for="mainBreakerShroudSelect">Breaker protected from bumps?</label>
+                    <Select
+                      id="mainBreakerShroudSelect"
+                      class="form-select"
+                      bind:value={technical_details.main_breaker_shroud}
+                    >
+                      <option value="">-- Select --</option>
+                      {#each YES_NO_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </Select>
+                  </div>
+                  <div class="sub-field">
+                    <label class="sub-label" for="canivoreCountInput">Number of CANivores</label>
                     <input
-                      type="range"
-                      min="0"
-                      max={ESTIMATED_BPS_SLIDER_MAX}
-                      step="0.1"
-                      value={estimatedBpsSliderValue(estimated_bps)}
-                      aria-label="Estimated BPS"
-                      on:input={(event) => setEstimatedBpsFromSlider(event.currentTarget.value)}
+                      id="canivoreCountInput"
+                      class="form-input"
+                      maxlength="40"
+                      autocomplete="off"
+                      placeholder="e.g. 1"
+                      bind:value={technical_details.canivore_count}
                     />
-                    <output>{hasEstimatedBps(estimated_bps) ? Number(estimated_bps).toFixed(1) : '0.0'}</output>
+                  </div>
+                  <div class="sub-field">
+                    <label class="sub-label" for="canBusCountInput">How many CAN buses</label>
+                    <input
+                      id="canBusCountInput"
+                      class="form-input"
+                      maxlength="40"
+                      autocomplete="off"
+                      placeholder="e.g. 2"
+                      bind:value={technical_details.can_bus_count}
+                    />
                   </div>
                 </div>
-              {/if}
+              </div>
             </div>
           {/if}
 
-          {#if !layout.hidden('main.technical')}
-            <div class="blk" style="order:{orders.get('core:main.technical') ?? 0}">
-              {#if pitSchema.technical_details}
-                <div class="form-group">
-                  <label class="form-label" for="mainBreakerBrandSelect">Main Breaker Brand</label>
-                  <Select
-                    id="mainBreakerBrandSelect"
-                    class="form-select"
-                    bind:value={technical_details.main_breaker_brand}
-                  >
-                    <option value="">-- Select --</option>
-                    {#each MAIN_BREAKER_OPTIONS as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </Select>
+          {#if !layout.hidden('main.controls') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.controls') ?? 0}">
+              <div class="form-group">
+                <div class="form-label">Controls and software</div>
+                <div class="field-grid">
+                  <div class="sub-field">
+                    <label class="sub-label" for="coprocessorSelect">Coprocessor</label>
+                    <Select id="coprocessorSelect" class="form-select" bind:value={technical_details.coprocessor}>
+                      <option value="">-- Select --</option>
+                      {#each COPROCESSOR_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </Select>
+                  </div>
+                  <div class="sub-field">
+                    <label class="sub-label" for="usesWpilibSelect">Uses WPILib?</label>
+                    <Select id="usesWpilibSelect" class="form-select" bind:value={technical_details.uses_wpilib}>
+                      <option value="">-- Select --</option>
+                      {#each YES_NO_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </Select>
+                  </div>
                 </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="mainBreakerShroudSelect"
-                    >Is Main Breaker Protected from Bumping with other Robots?</label
-                  >
-                  <Select
-                    id="mainBreakerShroudSelect"
-                    class="form-select"
-                    bind:value={technical_details.main_breaker_shroud}
-                  >
-                    <option value="">-- Select --</option>
-                    {#each YES_NO_OPTIONS as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </Select>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="usesCanivoreSelect">Uses Canivore?</label>
-                  <Select id="usesCanivoreSelect" class="form-select" bind:value={technical_details.uses_canivore}>
-                    <option value="">-- Select --</option>
-                    {#each YES_NO_OPTIONS as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </Select>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="canBusCountInput">How Many Can Busses</label>
+                {#each [['auto_tools', 'Auto tools', AUTO_TOOL_OPTIONS], ['vision', 'Vision', VISION_OPTIONS], ['programming_language', 'Programming language', PROGRAMMING_LANGUAGE_OPTIONS]] as [field, label, options]}
+                  <div class="sub-field">
+                    <div class="sub-label" id={`${field}Label`}>{label}</div>
+                    <div class="choice-chips" role="group" aria-labelledby={`${field}Label`}>
+                      {#each options as option}
+                        <button
+                          type="button"
+                          class="choice-chip"
+                          aria-pressed={hasTechnicalMulti(field, option)}
+                          class:selected={hasTechnicalMulti(field, option)}
+                          on:click={() => setTechnicalMulti(field, option, !hasTechnicalMulti(field, option))}
+                          >{option}</button
+                        >
+                      {/each}
+                    </div>
+                  </div>
+                {/each}
+                <div class="sub-field">
+                  <label class="sub-label" for="softwareOtherInput">Other software or controls</label>
                   <input
-                    id="canBusCountInput"
+                    id="softwareOtherInput"
                     class="form-input"
-                    type="number"
-                    min="0"
-                    step="1"
-                    bind:value={technical_details.can_bus_count}
+                    maxlength="240"
+                    placeholder="Anything not listed above"
+                    bind:value={technical_details.software_other}
                   />
                 </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="trenchOrBumpSelect">Trench or Bump?</label>
-                  <Select id="trenchOrBumpSelect" class="form-select" bind:value={technical_details.trench_or_bump}>
-                    <option value="">-- Select --</option>
-                    {#each TRENCH_OR_BUMP_OPTIONS as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </Select>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="hopperCapacityInput">Hopper Capacity</label>
-                  <input
-                    id="hopperCapacityInput"
-                    class="form-input"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="e.g. 5"
-                    bind:value={technical_details.hopper_capacity}
-                  />
-                </div>
-              {/if}
+              </div>
             </div>
           {/if}
 
-          {#if !layout.hidden('main.breaking')}
-            <div class="blk" style="order:{orders.get('core:main.breaking') ?? 0}">
-              {#if pitSchema.likely_breaking_component}
-                <div class="form-group">
-                  <label class="form-label" for="likelyBreakingComponentInput"
-                    >{layout.label('main.breaking', "What's most likely to break?")}</label
-                  >
-                  <textarea
-                    id="likelyBreakingComponentInput"
-                    class="form-input break-risk-input"
-                    rows="3"
-                    maxlength={MAX_BREAKING_COMPONENT_LENGTH}
-                    bind:value={likely_breaking_component}
-                    placeholder="Describe the most likely failure point"
-                  ></textarea>
-                </div>
-              {/if}
+          {#if !layout.hidden('main.contact') && pitSchema.technical_details}
+            <div class="blk" style="order:{orders.get('core:main.contact') ?? 0}">
+              <div class="form-group">
+                <label class="form-label" for="stratPhoneInput"
+                  >{layout.label('main.contact', "Strat person's phone number")}</label
+                >
+                <input
+                  id="stratPhoneInput"
+                  class="form-input"
+                  type="tel"
+                  inputmode="tel"
+                  maxlength="32"
+                  autocomplete="off"
+                  placeholder="(555) 555-5555"
+                  bind:value={technical_details.strat_phone}
+                />
+                <small class="form-help"
+                  >Who to text when we set up a strategy meeting. Only approved scouts can see it.</small
+                >
+              </div>
             </div>
           {/if}
 
-          {#if !layout.hidden('main.autopoints')}
-            <div class="blk" style="order:{orders.get('core:main.autopoints') ?? 0}">
-              {#if pitSchema.auto_points_estimate}
-                <div class="form-group">
-                  <label class="form-label" for="autoPointsEstimateInput"
-                    >{layout.label('main.autopoints', 'How many points do you usually score in auto?')}</label
-                  >
-                  <input
-                    id="autoPointsEstimateInput"
-                    class="form-input"
-                    maxlength="40"
-                    placeholder="e.g. 10 or 5-15"
-                    bind:value={auto_points_estimate}
-                  />
-                </div>
-              {/if}
-            </div>
-          {/if}
-
-          {#if !layout.hidden('main.notes')}
+          {#if !layout.hidden('main.notes') && pitSchema.additional_notes}
             <div class="blk" style="order:{orders.get('core:main.notes') ?? 0}">
-              {#if pitSchema.additional_notes}
-                <div class="form-group">
-                  <label class="form-label" for="additionalNotesInput"
-                    >{layout.label('main.notes', 'Anything else?')}</label
-                  >
-                  <textarea
-                    id="additionalNotesInput"
-                    class="form-input additional-notes-input"
-                    rows="5"
-                    maxlength="4000"
-                    bind:value={additional_notes}
-                    placeholder="Strategy observations, pit conversations, repair history, or follow-up questions"
-                  ></textarea>
-                  <small class="form-help"
-                    >Saved for human review. Structured pit capabilities and unresolved problems affect Power Rankings.</small
-                  >
-                </div>
-              {/if}
+              <div class="form-group">
+                <label class="form-label" for="additionalNotesInput">{layout.label('main.notes', 'Extra notes')}</label>
+                <textarea
+                  id="additionalNotesInput"
+                  class="form-input additional-notes-input"
+                  rows="5"
+                  maxlength="4000"
+                  bind:value={additional_notes}
+                  placeholder="Strategy observations, pit conversations, repair history, or follow-up questions"
+                ></textarea>
+                <small class="form-help"
+                  >Saved for human review. Structured pit capabilities and unresolved problems affect Power Rankings.</small
+                >
+              </div>
             </div>
           {/if}
 
           <CustomQuestions questions={customMain} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
-      {/if}
-
-      {#if activeTopic === 'extra' && activeExtraGroup === 'added'}
-        <CustomQuestions questions={customExtra} bind:answers={customAnswers} {showMissing} />
       {/if}
 
       {#if activeTopic === 'photos'}
@@ -1344,7 +1506,7 @@
               <small class="form-help">{editablePhotoPaths.length + pendingFiles.length}/3 selected</small>
             </div>
             <button
-              class="btn btn-primary"
+              class="btn btn-primary photo-add"
               type="button"
               on:click={openPhotoPicker}
               disabled={!photoSlotsRemaining || saving || uploading}
@@ -1380,7 +1542,6 @@
                     class="photo-remove"
                     type="button"
                     aria-label="Remove photo"
-                    title="Remove photo"
                     on:click={() => removeExistingPhoto(path)}>&times;</button
                   >
                 </div>
@@ -1396,7 +1557,6 @@
                     class="photo-remove"
                     type="button"
                     aria-label="Remove photo"
-                    title="Remove photo"
                     on:click={() => removePendingPhoto(idx)}>&times;</button
                   >
                 </div>
@@ -1408,555 +1568,14 @@
         </section>
       {/if}
 
-      {#if activeTopic === 'extra' && activeExtraGroup === 'setup'}
-        {#if pitSchema.scout_name}
-          <div class="form-group">
-            <label class="form-label" for="scoutNameInput">Pit contact name</label>
-            <input
-              id="scoutNameInput"
-              class="form-input"
-              type="text"
-              maxlength="120"
-              list="pitContacts"
-              use:suggest
-              autocomplete="off"
-              placeholder="Start typing the person you spoke with"
-              bind:value={scout_name}
-            />
-            <datalist id="pitContacts">
-              {#each pitContacts as contact}<option value={contact}></option>{/each}
-            </datalist>
-            <small class="form-help"
-              >Suggestions appear as you type from previous pit contacts. You can always enter someone new for follow-up
-              questions.</small
-            >
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="pitContactPhone">Pit contact phone</label>
-            <input
-              id="pitContactPhone"
-              class="form-input"
-              type="tel"
-              inputmode="tel"
-              maxlength="32"
-              autocomplete="tel"
-              placeholder="Optional: (555) 555-5555"
-              bind:value={technical_details.pit_contact_phone}
-            />
-            <small class="form-help">Saved with this team’s private pit profile for follow-up questions.</small>
-          </div>
-        {/if}
-
-        <div class="form-group">
-          <label class="form-label" for="drivebaseSelect">Drivebase Type</label>
-          <Select id="drivebaseSelect" class="form-select" bind:value={drivebase_type}>
-            <option value="">-- Select --</option>
-            {#each DRIVEBASE_OPTIONS as option}
-              <option value={option}>{option}</option>
-            {/each}
-          </Select>
-          {#if drivebase_type === 'Other'}
-            <input class="form-input" maxlength="60" placeholder="What kind?" bind:value={drivebase_type_other} />
-          {/if}
-        </div>
-
-        {#if pitSchema.climb_options}
-          <div class="form-group">
-            <div class="form-label">Climb Options</div>
-            <div class="climb-options-grid">
-              {#each CLIMB_OPTIONS as option}
-                <label class="form-checkbox climb-option">
-                  <input
-                    type="checkbox"
-                    checked={climb_options.includes(option)}
-                    disabled={option !== NO_CLIMB_OPTION && climb_options.includes(NO_CLIMB_OPTION)}
-                    on:change={(event) => setClimbOption(option, event.currentTarget.checked)}
-                  />
-                  <span>{option}</span>
-                </label>
-              {/each}
-            </div>
-            <small class="form-help">{climb_options.length}/{CLIMB_OPTIONS.length} selected</small>
-          </div>
-        {/if}
-
-        {#if pitSchema.auto_options}
-          <div class="form-group">
-            <div class="auto-options-header">
-              <div class="form-label">Auto Options</div>
-              <button
-                class="btn btn-outline"
-                type="button"
-                on:click={addAutoOption}
-                disabled={autoOptions.length >= MAX_AUTO_OPTIONS}
-              >
-                Add Auto
-              </button>
-            </div>
-            <small class="form-help">{autoOptions.length}/{MAX_AUTO_OPTIONS} autos listed</small>
-
-            {#if !autoOptions.length}
-              <div class="auto-options-empty">No named auto options added.</div>
-            {:else}
-              <div class="auto-option-editor-list">
-                {#each autoOptions as option, idx}
-                  <div class="card auto-option-editor">
-                    <div class="auto-option-editor-header">
-                      <strong>Auto {idx + 1}</strong>
-                      <button class="btn btn-outline" type="button" on:click={() => removeAutoOption(idx)}>
-                        Remove
-                      </button>
-                    </div>
-
-                    <input
-                      class="form-input"
-                      type="text"
-                      maxlength={MAX_AUTO_NAME_LENGTH}
-                      placeholder="Auto name"
-                      value={option.name}
-                      on:input={(event) => updateAutoOption(idx, 'name', event.currentTarget.value)}
-                    />
-
-                    <textarea
-                      class="form-input auto-option-description"
-                      rows="3"
-                      maxlength={MAX_AUTO_DESCRIPTION_LENGTH}
-                      placeholder="Short description of the path, starting spot, and scoring plan"
-                      value={option.description}
-                      on:input={(event) => updateAutoOption(idx, 'description', event.currentTarget.value)}
-                    ></textarea>
-                    <div class="pit-auto-route-heading">
-                      <span>Mirrored auto path</span>
-                      <div>
-                        <button
-                          class="btn btn-outline btn-sm"
-                          type="button"
-                          on:click={() => updateAutoOption(idx, 'name', 'Trench auto')}>Trench</button
-                        ><button
-                          class="btn btn-outline btn-sm"
-                          type="button"
-                          on:click={() => updateAutoOption(idx, 'name', 'Bump auto')}>Bump</button
-                        >
-                      </div>
-                    </div>
-                    <RebuiltFieldMap alliance="blue" bind:path={autoOptions[idx].path} />
-                    <small class="form-help"
-                      >Draw once in this mirrored field view; pit scouting does not need an alliance selection.</small
-                    >
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {/if}
-      {/if}
-
-      {#if pitSchema.technical_details}
-        {#if activeTopic === 'extra' && activeExtraGroup === 'mechanisms'}
-          <section class="question-section">
-            <h4>Robot and Mechanisms</h4>
-
-            <div class="field-grid">
-              <div class="form-group">
-                <label class="form-checkbox" for="useNetInput"
-                  ><input
-                    id="useNetInput"
-                    type="checkbox"
-                    checked={technical_details.use_net === 'Yes'}
-                    on:change={(event) =>
-                      (technical_details = {
-                        ...technical_details,
-                        use_net: event.currentTarget.checked ? 'Yes' : 'No'
-                      })}
-                  /><span>Do they use a net?</span></label
-                >
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="intakeStyleInput">Ground intake style</label>
-                <input
-                  id="intakeStyleInput"
-                  class="form-input"
-                  maxlength="80"
-                  placeholder="Describe the intake"
-                  bind:value={technical_details.intake_style}
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="groundRollerMotorCountInput">Motors powering ground roller</label>
-                <input
-                  id="groundRollerMotorCountInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="1"
-                  bind:value={technical_details.ground_roller_motor_count}
-                />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Motor controllers used</div>
-              <div class="option-grid compact">
-                {#each MOTOR_CONTROLLER_OPTIONS as option}
-                  <label class="form-checkbox option-tile">
-                    <input
-                      type="checkbox"
-                      checked={hasTechnicalMulti('motor_controllers', option)}
-                      on:change={(event) => setTechnicalMulti('motor_controllers', option, event.currentTarget.checked)}
-                    />
-                    <span>{option}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Motor types used</div>
-              <div class="option-grid compact">
-                {#each MOTOR_TYPE_OPTIONS as option}
-                  <label class="form-checkbox option-tile">
-                    <input
-                      type="checkbox"
-                      checked={hasTechnicalMulti('motor_types', option)}
-                      on:change={(event) => setTechnicalMulti('motor_types', option, event.currentTarget.checked)}
-                    />
-                    <span>{option}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-          </section>
-        {/if}
-
-        {#if activeTopic === 'extra' && activeExtraGroup === 'electrical'}
-          <section class="question-section">
-            <h4>Electrical</h4>
-            <p class="extra-note">Main breaker brand and bump protection moved to the Main form.</p>
-
-            <div class="field-grid">
-              <div class="form-group">
-                <label class="form-label" for="sbConnectorSelect">SB connector</label>
-                <Select id="sbConnectorSelect" class="form-select" bind:value={technical_details.sb_connector}>
-                  <option value="">-- Select --</option>
-                  {#each SB_CONNECTOR_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-            </div>
-          </section>
-        {/if}
-
-        {#if activeTopic === 'extra' && activeExtraGroup === 'controls'}
-          <section class="question-section">
-            <h4>Controls and Software</h4>
-            <p class="extra-note">Uses Canivore and CAN bus count moved to the Main form.</p>
-
-            <div class="field-grid">
-              <div class="form-group">
-                <label class="form-label" for="coprocessorSelect">Coprocessor</label>
-                <Select id="coprocessorSelect" class="form-select" bind:value={technical_details.coprocessor}>
-                  <option value="">-- Select --</option>
-                  {#each COPROCESSOR_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="usesWpilibSelect">Uses WPILib?</label>
-                <Select id="usesWpilibSelect" class="form-select" bind:value={technical_details.uses_wpilib}>
-                  <option value="">-- Select --</option>
-                  {#each YES_NO_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Auto tools used</div>
-              <div class="option-grid compact">
-                {#each AUTO_TOOL_OPTIONS as option}
-                  <label class="form-checkbox option-tile">
-                    <input
-                      type="checkbox"
-                      checked={hasTechnicalMulti('auto_tools', option)}
-                      on:change={(event) => setTechnicalMulti('auto_tools', option, event.currentTarget.checked)}
-                    />
-                    <span>{option}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Vision used</div>
-              <div class="option-grid compact">
-                {#each VISION_OPTIONS as option}
-                  <label class="form-checkbox option-tile">
-                    <input
-                      type="checkbox"
-                      checked={hasTechnicalMulti('vision', option)}
-                      on:change={(event) => setTechnicalMulti('vision', option, event.currentTarget.checked)}
-                    />
-                    <span>{option}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Programming language</div>
-              <div class="option-grid compact">
-                {#each PROGRAMMING_LANGUAGE_OPTIONS as option}
-                  <label class="form-checkbox option-tile">
-                    <input
-                      type="checkbox"
-                      checked={hasTechnicalMulti('programming_language', option)}
-                      on:change={(event) =>
-                        setTechnicalMulti('programming_language', option, event.currentTarget.checked)}
-                    />
-                    <span>{option}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="softwareOtherInput">Other software or controls</label>
-              <input
-                id="softwareOtherInput"
-                class="form-input"
-                maxlength="240"
-                placeholder="Anything not listed above"
-                bind:value={technical_details.software_other}
-              />
-            </div>
-          </section>
-        {/if}
-
-        {#if activeTopic === 'extra' && activeExtraGroup === 'structure'}
-          <section class="question-section">
-            <h4>Drivebase and Structure</h4>
-
-            <div class="field-grid">
-              <div class="form-group">
-                <label class="form-label" for="swerveModuleSelect">Swerve module</label>
-                <Select id="swerveModuleSelect" class="form-select" bind:value={technical_details.swerve_module}>
-                  <option value="">-- Select --</option>
-                  {#each SWERVE_MODULE_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="fitsUnderTrenchSelect">Can fit under the trench?</label>
-                <Select id="fitsUnderTrenchSelect" class="form-select" bind:value={technical_details.fits_under_trench}>
-                  <option value="">-- Select --</option>
-                  {#each YES_NO_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="drivesOverMoundSelect">Can drive over the mound?</label>
-                <Select id="drivesOverMoundSelect" class="form-select" bind:value={technical_details.drives_over_mound}>
-                  <option value="">-- Select --</option>
-                  {#each YES_NO_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="bumperFoamSelect">Bumper foam</label>
-                <Select id="bumperFoamSelect" class="form-select" bind:value={technical_details.bumper_foam}>
-                  <option value="">-- Select --</option>
-                  {#each BUMPER_FOAM_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-            </div>
-
-            <div class="dimension-grid">
-              <div class="form-group">
-                <label class="form-label" for="drivetrainLengthInput">Drivetrain length (in)</label><input
-                  id="drivetrainLengthInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={technical_details.drivetrain_length}
-                />
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="drivetrainWidthInput">Drivetrain width (in)</label><input
-                  id="drivetrainWidthInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={technical_details.drivetrain_width}
-                />
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="drivetrainHeightInput">Drivetrain height (in)</label><input
-                  id="drivetrainHeightInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={technical_details.drivetrain_height}
-                />
-              </div>
-            </div>
-
-            <div class="dimension-grid">
-              <div class="form-group">
-                <label class="form-label" for="bumperLengthInput">Bumper length</label>
-                <input
-                  id="bumperLengthInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={technical_details.bumper_length}
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="bumperWidthInput">Bumper width</label>
-                <input
-                  id="bumperWidthInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={technical_details.bumper_width}
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="bumperHeightInput">Bumper height</label>
-                <input
-                  id="bumperHeightInput"
-                  class="form-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  bind:value={technical_details.bumper_height}
-                />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Encoder types used</div>
-              <div class="option-grid compact">
-                {#each ENCODER_TYPE_OPTIONS as option}
-                  <label class="form-checkbox option-tile">
-                    <input
-                      type="checkbox"
-                      checked={hasTechnicalMulti('encoder_types', option)}
-                      on:change={(event) => setTechnicalMulti('encoder_types', option, event.currentTarget.checked)}
-                    />
-                    <span>{option}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-
-            <div class="field-grid">
-              <div class="form-group">
-                <label class="form-label" for="printedRollerHubsSelect">3D printed roller hubs?</label>
-                <Select
-                  id="printedRollerHubsSelect"
-                  class="form-select"
-                  bind:value={technical_details.printed_roller_hubs}
-                >
-                  <option value="">-- Select --</option>
-                  {#each YES_NO_OPTIONS as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </Select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="rollerHubMaterialInput">Roller hub print material</label>
-                <input
-                  id="rollerHubMaterialInput"
-                  class="form-input"
-                  type="text"
-                  maxlength="80"
-                  placeholder="e.g. PLA, PETG, Onyx"
-                  bind:value={technical_details.roller_hub_material}
-                />
-              </div>
-            </div>
-          </section>
-        {/if}
-
-        {#if activeTopic === 'extra' && activeExtraGroup === 'ratings'}
-          <section class="question-section">
-            <h4>Subjective Ratings</h4>
-            <div class="rating-grid">
-              <div class="form-group">
-                <label class="form-label" for="electricalRatingInput">Electrical rating (1-10)</label>
-                <div class="rating-slider">
-                  <input
-                    id="electricalRatingInput"
-                    type="range"
-                    min="1"
-                    max="10"
-                    step="1"
-                    bind:value={technical_details.electrical_rating}
-                  />
-                  <output>{technical_details.electrical_rating ?? 'Not rated'}</output>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="drivebaseRatingInput">Drivebase rating (1-10)</label>
-                <div class="rating-slider">
-                  <input
-                    id="drivebaseRatingInput"
-                    type="range"
-                    min="1"
-                    max="10"
-                    step="1"
-                    bind:value={technical_details.drivebase_rating}
-                  />
-                  <output>{technical_details.drivebase_rating ?? 'Not rated'}</output>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="overallReliabilityRatingInput">Overall reliability rating (1-10)</label>
-                <div class="rating-slider">
-                  <input
-                    id="overallReliabilityRatingInput"
-                    type="range"
-                    min="1"
-                    max="10"
-                    step="1"
-                    bind:value={technical_details.overall_reliability_rating}
-                  />
-                  <output>{technical_details.overall_reliability_rating ?? 'Not rated'}</output>
-                </div>
-              </div>
-            </div>
-          </section>
-        {/if}
-      {/if}
-
       <div class="submit-row">
+        <!-- Next to the button, so a failed save is seen: on a phone the top of this long form is far off screen. -->
+        {#if apiNote}
+          <div class="note submit-note" role="status">{apiNote}</div>
+        {/if}
         <small class="submit-hint"
-          >This saves everything filled in so far across Main, Extra, and Photos at once - submitting from here doesn't
-          skip anything on the other tabs.</small
+          >This saves everything filled in so far on Main and Photos at once - submitting from either tab doesn't skip
+          the other.</small
         >
         <button class="btn btn-primary submit-btn" type="submit" disabled={saving || uploading}>
           {#if uploading}
@@ -2313,92 +1932,43 @@
     padding-top: 1rem;
   }
 
-  .extra-note {
-    margin: -0.4rem 0 0;
-    color: var(--text-muted);
-    font-size: 0.78rem;
-  }
-
-  /* Pressing Extra drops its sub-topics open right there in the rail - a
-     list of rows, not a native <select> box - same shape as Main/Extra/
-     Photos above it, just indented one level to read as "inside Extra". */
-  .extra-group-list {
-    display: flex;
-    flex-direction: column;
-    background: var(--surface-2);
-  }
-
-  .extra-group-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: var(--gap-2);
-    padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) * 2);
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-    font: inherit;
-    font-size: 0.82rem;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .extra-group-item:hover {
-    color: var(--text);
-  }
-  .extra-group-item.active {
-    color: var(--text);
-    font-weight: 600;
-    background: color-mix(in srgb, var(--brand-gold-soft) 60%, transparent);
-  }
-
   .question-section h4 {
     margin: 0;
     font-size: 1rem;
   }
 
-  .field-grid,
-  .dimension-grid,
-  .rating-grid {
+  .field-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     gap: 0.75rem;
   }
-
-  .rating-slider {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .rating-slider input[type='range'] {
-    flex: 1;
-    min-width: 0;
-  }
-  .rating-slider output {
-    min-width: 4.5rem;
-    text-align: right;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-  }
-
-  .option-grid {
+  /* A question with a few answers inside it (shooter, breaker/CAN, controls): one question label, small
+     labels for each part. */
+  .sub-field {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.55rem;
-    margin-top: 0.5rem;
+    gap: var(--space-1);
+    min-width: 0;
+    margin-top: var(--space-2);
   }
-
-  .option-grid.compact {
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  .field-grid .sub-field {
+    margin-top: 0;
   }
-
-  .option-tile {
-    min-height: 44px;
-    padding: 0.65rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  .sub-label {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+  }
+  .dimension-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+  }
+  .dimension-field {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
   }
 
   .auto-options-header,
@@ -2436,11 +2006,6 @@
     resize: vertical;
   }
 
-  .break-risk-input {
-    min-height: 88px;
-    resize: vertical;
-  }
-
   .estimated-bps-slider {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -2452,27 +2017,41 @@
     width: 100%;
     accent-color: var(--brand-gold, #f1c331);
   }
-  .estimated-bps-slider output {
-    min-width: 2.6rem;
+  .bps-input {
+    width: 5.5rem;
+    font-family: var(--font-mono);
     text-align: right;
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
   }
 
-  .climb-options-grid {
+  /* Main-tab choices: big tap targets for a scout holding a phone in a pit. Same look as Match Scouting's
+     choice and rating buttons (gold when chosen), so a scout sees one kind of button across the site. */
+  .choice-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+  .choice-chips.even {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.6rem;
-    margin-top: 0.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  .climb-option {
-    min-height: 48px;
-    padding: 0.7rem 0.8rem;
+  .choice-chip {
+    min-height: var(--tap-min, 44px);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .choice-chip {
+    padding: 0 var(--space-3);
+  }
+  .choice-chip.selected {
+    border-color: var(--brand-gold-strong);
+    background: var(--brand-gold-soft);
+    color: var(--secondary);
+    font-weight: 600;
   }
 
   .visually-hidden {
@@ -2579,11 +2158,17 @@
   .submit-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--gap-3);
     margin-top: 0.5rem;
     padding-top: var(--space-3);
     border-top: 1px solid var(--border);
+  }
+
+  .submit-note {
+    flex: 1 1 100%;
+    margin: 0;
   }
 
   .submit-hint {
@@ -2638,7 +2223,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   .pp-head {
     display: grid;
     gap: var(--space-2);
@@ -2719,15 +2304,161 @@
   .pp-tiles .problem-flag {
     font-size: 0.7rem;
   }
+  /* Phone entry screen: no card chrome, a pinned bar with Back, the team and the Main/Photos segments, each
+     question in its own panel, every field 16px so iOS doesn't zoom, and Submit docked above the bottom bar. */
+  .entry-card.pp-entry {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .pp-entry-bar {
+    position: sticky;
+    top: calc(3rem + var(--safe-top));
+    z-index: 5;
+    display: grid;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) 0;
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+  }
+  .pp-entry-top {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .pp-back {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .pp-entry-title {
+    display: grid;
+    min-width: 0;
+  }
+  .pp-entry-title strong {
+    font-family: var(--font-mono);
+    font-size: 1.2rem;
+  }
+  .pp-entry-title span {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+  .pp-segments {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+  }
+  .pp-segments button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--tap-min);
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pp-segments button.active {
+    background: var(--brand-gold-soft);
+    color: var(--secondary);
+  }
+  .pp-segments small {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .pp-entry .entry-content {
+    display: grid;
+    gap: var(--space-3);
+  }
+  .pp-entry .pit-blocks {
+    gap: var(--space-3);
+  }
+  .pp-entry .pit-blocks > .blk,
+  .pp-entry .photo-section {
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+  }
+  .pp-entry .pit-blocks > .blk:empty {
+    display: none;
+  }
+  .pp-entry .form-group {
+    margin-bottom: 0;
+  }
+  .pp-entry .form-input {
+    font-size: 16px;
+    min-height: var(--tap-min);
+  }
+  .pp-entry .field-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+  .pp-entry .choice-chips:not(.even) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pp-entry .choice-chip {
+    padding: 0 var(--space-2);
+    font-size: 0.95rem;
+  }
+  .pp-entry .bps-input {
+    width: 4.8rem;
+  }
+  .pp-entry .auto-options-header,
+  .pp-entry .auto-option-editor-header {
+    flex-direction: row;
+    align-items: center;
+  }
+  .pp-entry .auto-option-editor {
+    padding: var(--space-2);
+  }
+  .pp-entry .photo-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .pp-entry .photo-add {
+    min-height: var(--tap-comfort);
+    width: 100%;
+  }
+  .pp-entry .photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pp-entry .photo-item img,
+  .pp-entry .pending-file-card {
+    height: 34vw;
+  }
+  .pp-entry .photo-remove {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+  .pp-entry .submit-row {
+    margin-top: 0;
+  }
+
   @media (max-width: 900px) {
     .view-tabs button {
       min-height: var(--tap-min);
-    }
-    .topic-rail {
-      position: sticky;
-      top: calc(3rem + var(--safe-top));
-      z-index: 4;
-      background: var(--surface-1);
     }
     .submit-row {
       position: sticky;

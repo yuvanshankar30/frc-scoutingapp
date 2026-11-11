@@ -1,4 +1,4 @@
-// Reads what the cleanup plan (#125) is built from: sizes and the per-event inventory (SQL functions from migration
+// Reads what the cleanup plan is built from: sizes and the per-event inventory (SQL functions from migration
 // 20261024000000_data_cleanup_inventory.sql, service role only), the global sources' counts and the active event.
 import { RETENTION_POLICY, retentionLimits } from './policy.js';
 import { buildCleanupPlan } from './plan.js';

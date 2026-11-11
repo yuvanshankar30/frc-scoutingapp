@@ -175,7 +175,7 @@
     <p>An admin picks the event the team is scouting in <a href="/scouting-admin">Scouting Admin</a>.</p>
   </div>
 {:else if $isPhone}
-  <!-- Phone (#124): one screen, no scrolling. Every block shares the visible height, and sizes
+  <!-- Phone: one screen, no scrolling. Every block shares the visible height, and sizes
        follow the phone's own height and width. -->
   <div class="ph-home">
     <a class={`ph-hero ${next?.ourColor || ''}`} href={next ? '/driveteam' : '/strategy'} aria-label="Next match">
@@ -615,7 +615,7 @@
     }
   }
 
-  /* Phone Home (#124): fills exactly the visible screen. */
+  /* Phone Home: fills exactly the visible screen. */
   .ph-home {
     --gap: clamp(8px, 1.4 * var(--vh), 14px);
     height: var(--screen-avail);
@@ -810,7 +810,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .ph-side b {
       white-space: normal;

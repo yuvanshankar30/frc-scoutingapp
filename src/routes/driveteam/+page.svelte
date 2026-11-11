@@ -491,7 +491,7 @@
     }
   }
 
-  /* Desktop (#124): a match-day board. Next match on the left, the rest of the schedule and past
+  /* Desktop: a match-day board. Next match on the left, the rest of the schedule and past
      results beside it, instead of the narrow phone column. */
   @media (min-width: 901px) {
     .dt-page {
@@ -521,7 +521,7 @@
       grid-template-columns: minmax(0, 1fr);
     }
   }
-  /* Phone (#124): the next match fills the first screen, big enough to read from the queue. */
+  /* Phone: the next match fills the first screen, big enough to read from the queue. */
   @media (max-width: 900px) {
     .dt-page {
       padding: 0;
