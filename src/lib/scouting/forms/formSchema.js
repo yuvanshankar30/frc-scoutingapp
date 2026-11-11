@@ -308,7 +308,9 @@ const HEX = /^#[0-9a-f]{6}$/i;
 // Images come from the app's own storage (uploaded in the editor) or another https address.
 const imageUrl = (value) => {
   const url = String(value ?? '').trim();
-  return url.length <= 500 && /^https:\/\/[^\s"'<>]+$/i.test(url) ? url : '';
+  // https anywhere, or plain http from this computer (a local Supabase while developing).
+  const ok = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)[^\s"'<>]+$/i.test(url);
+  return url.length <= 500 && ok ? url : '';
 };
 
 /** A card style with only known keys and valid values; defaults are left out so stored forms stay small. */

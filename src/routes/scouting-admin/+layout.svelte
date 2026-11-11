@@ -18,7 +18,7 @@
   import { setActiveEvent } from '$lib/stores/activeEvent.js';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
   import DatePicker from '$lib/components/common/DatePicker.svelte';
-  import FormEditor from '$lib/components/forms/FormEditor.svelte';
+  import FormEditor from '$lib/components/forms/designer/FormDesigner.svelte';
   import ScoutDataBrowser from '$lib/components/scouting/ScoutDataBrowser.svelte';
   import TeamRankingDefensePanel from '$lib/components/scouting/TeamRankingDefensePanel.svelte';
   import MatchKeyReview from '$lib/components/scouting/MatchKeyReview.svelte';

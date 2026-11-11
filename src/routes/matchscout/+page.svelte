@@ -124,7 +124,7 @@
     const zoom = TEXT_SIZES.find((size) => size.key === style.textSize)?.scale ?? 1;
     return [
       `order:${orderMap.get(`core:${key}`) ?? 0}`,
-      span ? `grid-column: span ${span}` : '',
+      span ? `--span:${span}` : '',
       zoom !== 1 ? `zoom:${zoom}` : '',
       style.accent ? `--accent:${style.accent};--accent-strong:${style.accent}` : ''
     ]
@@ -3633,12 +3633,33 @@
   /* Each phase's cards sit on an aligned grid of at most four columns. Cards in a row share one height, and
      a card's controls sit at its bottom so button rows line up across the row. Cards holding several ratings
      span two rows; the power ranking, notes, fouls and breaks span two columns. Pre-match stays one column. */
+  /* A 12-column grid, the same one the form designer draws. A card the designer gave a width spans that many columns;
+     the rest take a quarter, a third or half of the row as the space allows, and everything stacks when narrow. */
   .blocks.packed {
+    --default-span: 3;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(max(22rem, calc((100% - 3 * var(--gap-4)) / 4)), 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     grid-auto-flow: row dense;
     gap: var(--gap-4);
     align-items: stretch;
+  }
+  .blocks.packed > :global(*) {
+    grid-column: span var(--span, var(--default-span));
+  }
+  @container (max-width: 90rem) {
+    .blocks.packed {
+      --default-span: 4;
+    }
+  }
+  @container (max-width: 66rem) {
+    .blocks.packed {
+      --default-span: 6;
+    }
+  }
+  @container (max-width: 44rem) {
+    .blocks.packed > :global(*) {
+      grid-column: 1 / -1;
+    }
   }
   .blocks.packed > :global(*) {
     margin: 0;
@@ -3688,7 +3709,7 @@
   }
   /* Auto has three columns: the two short questions stack in the first, beside the points and fuel-source cards. */
   .auto-controls.blocks.packed {
-    grid-template-columns: repeat(auto-fit, minmax(max(22rem, calc((100% - 2 * var(--gap-4)) / 3)), 1fr));
+    --default-span: 4;
   }
   .blocks.packed .balls-control,
   .blocks.packed .balls-control .form-input {

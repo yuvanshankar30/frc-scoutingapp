@@ -24,7 +24,7 @@
     const scale = TEXT_SIZES.find((size) => size.key === style.textSize)?.scale ?? 1;
     return [
       orders ? `order:${orders.get(question.id) ?? 0}` : '',
-      span ? `grid-column: span ${span}` : '',
+      span ? `--span:${span}` : '',
       `--cq-scale:${scale}`,
       style.accent ? `--cq-accent:${style.accent}` : ''
     ]
