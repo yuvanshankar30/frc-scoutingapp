@@ -1,0 +1,247 @@
+{
+  "format": "frc-scouting-form",
+  "formatVersion": 1,
+  "game": "2026 REBUILT",
+  "form": "match",
+  "label": "Match scouting",
+  "sections": [
+    {
+      "id": "prematch",
+      "label": "Pre-match",
+      "blocks": [
+        {
+          "key": "prematch.assignment",
+          "label": "Match, robot and alliance",
+          "required": true,
+          "note": "Scout name, match number, robot number and alliance. Every report needs these."
+        },
+        {
+          "key": "prematch.preload",
+          "label": "Preload",
+          "required": true,
+          "note": "Whether the robot started with a preload."
+        },
+        {
+          "key": "prematch.start",
+          "label": "Starting position",
+          "help": "Your alliance wall is on the left. Highlights indicate starting lanes, not exact robot locations.",
+          "required": true,
+          "note": "Which of the five starting lanes the robot used."
+        }
+      ]
+    },
+    {
+      "id": "auto",
+      "label": "Auto",
+      "blocks": [
+        {
+          "key": "auto.ran",
+          "label": "Did autonomous run?",
+          "required": false
+        },
+        {
+          "key": "auto.points",
+          "label": "Estimated points scored",
+          "help": "Drag to estimate, or type an exact number, a range such as 40-60, or a lower bound such as 100+. Optional.",
+          "required": false
+        },
+        {
+          "key": "auto.sources",
+          "label": "Where did the robot collect fuel?",
+          "help": "Select every location observed during autonomous.",
+          "required": false
+        },
+        {
+          "key": "auto.cycles",
+          "label": "Autonomous cycles",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "teleop",
+      "label": "Teleop",
+      "blocks": [
+        {
+          "key": "teleop.roles",
+          "label": "Observed roles",
+          "help": "Select every role this robot meaningfully performed.",
+          "required": true,
+          "note": "Scorer, Defense or Shuttler. Used by Power Rankings."
+        },
+        {
+          "key": "teleop.balls",
+          "label": "Balls scored",
+          "help": "Pick a suggested range from the list or type a number, a range or a lower bound, like 137, 100-150 or 500+.",
+          "required": true,
+          "note": "The scoring estimate every analytics page uses."
+        },
+        {
+          "key": "teleop.defense",
+          "label": "Defense details",
+          "required": true,
+          "note": "Appears when Defense is picked: robots defended, hub active/inactive, shifts and a 1-10 effectiveness."
+        },
+        {
+          "key": "teleop.notes",
+          "label": "Real-scout observations",
+          "required": false,
+          "note": "Required when the robot played defense: the scout describes the defense."
+        }
+      ]
+    },
+    {
+      "id": "shuttling",
+      "label": "Shuttling",
+      "blocks": [
+        {
+          "key": "shuttling.shuttled",
+          "label": "Did the robot shuttle fuel?",
+          "help": "Shuttling is moving fuel toward your alliance zone without scoring it, by driving it, pushing it or launching it.",
+          "required": false,
+          "note": "Yes or no; the other shuttling questions appear only for yes."
+        },
+        {
+          "key": "shuttling.amount",
+          "label": "Fuel shuttled",
+          "help": "Pick a suggested range or type a number, a range or a lower bound, like 30, 25-50 or 100+.",
+          "required": false
+        },
+        {
+          "key": "shuttling.rating",
+          "label": "Shuttling effectiveness",
+          "help": "1 is poor and 5 is excellent. Leave blank when you could not judge it.",
+          "required": false
+        },
+        {
+          "key": "shuttling.notes",
+          "label": "Shuttling notes",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "blocks": [
+        {
+          "key": "teleop.ratings",
+          "label": "Shot accuracy",
+          "help": "Each number shows the band it stands for. Boundary values belong to the lower band.",
+          "required": true,
+          "note": "Every Performance answer is required."
+        },
+        {
+          "key": "performance.bps",
+          "label": "Balls per second",
+          "required": true,
+          "note": "A slider; its 1-5 band also fills the older BPS rating."
+        },
+        {
+          "key": "teleop.intake",
+          "label": "Intake speed",
+          "help": "1 is slow and 3 is fast.",
+          "required": true
+        },
+        {
+          "key": "performance.driver",
+          "label": "Driver skill",
+          "help": "1 is poor and 5 is excellent: field awareness, control and decision making.",
+          "required": true
+        },
+        {
+          "key": "performance.ranking",
+          "label": "Power ranking",
+          "help": "Tap the robots from best to worst in this match. Mark a robot \"Didn't watch\" to leave it out; every scout's rankings are averaged per match.",
+          "required": true,
+          "note": "Averaged across scouts on Power Rankings."
+        },
+        {
+          "key": "performance.notes",
+          "label": "Notes about performance",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "robot",
+      "label": "Robot",
+      "blocks": [
+        {
+          "key": "teleop.status",
+          "label": "Robot status",
+          "required": true,
+          "note": "Active, dead or stopped for each shift (1-4) and endgame."
+        },
+        {
+          "key": "teleop.crash",
+          "label": "Significant crash",
+          "required": true,
+          "note": "Whether the robot crashed, and into what."
+        },
+        {
+          "key": "auto.collision",
+          "label": "Any collision during auto?",
+          "required": false
+        },
+        {
+          "key": "robot.intakeJammed",
+          "label": "Intake jammed during the match",
+          "required": false
+        },
+        {
+          "key": "postmatch.cards",
+          "label": "Cards",
+          "required": false
+        },
+        {
+          "key": "robot.fouls",
+          "label": "Fouls",
+          "help": "Count the fouls called on this robot. Leave at — if you could not tell.",
+          "required": false,
+          "note": "Any foul asks for its nature from a dropdown."
+        },
+        {
+          "key": "postmatch.break",
+          "label": "Mechanical break",
+          "required": true,
+          "note": "Needed to decide whether the pit crew must be told."
+        },
+        {
+          "key": "robot.breaks",
+          "label": "What broke and how the team handled it",
+          "help": "What broke, how it changed the robot's play, and how the team played around it or fixed it.",
+          "required": false,
+          "note": "What broke is required when there was a mechanical break."
+        },
+        {
+          "key": "postmatch.beached",
+          "label": "Robot became beached",
+          "required": false
+        },
+        {
+          "key": "postmatch.problem",
+          "label": "Send a problem to the pit crew",
+          "required": false,
+          "note": "Hides only the optional checkbox. When a robot dies or breaks, the required pit problem report still appears."
+        }
+      ]
+    },
+    {
+      "id": "postmatch",
+      "label": "Post-match",
+      "blocks": [
+        {
+          "key": "postmatch.notes",
+          "label": "Post-match scout notes",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "design": {
+    "questions": [],
+    "core": {},
+    "order": {}
+  }
+}

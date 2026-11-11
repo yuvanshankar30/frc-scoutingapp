@@ -16,8 +16,10 @@
     Hash,
     History,
     Image,
+    Download,
     Lock,
     Monitor,
+    Upload,
     MousePointerClick,
     Plus,
     Redo2,
@@ -45,7 +47,9 @@
     describeDiff,
     diffForms,
     emptyForm,
+    formFromFile,
     formProblems,
+    formToFile,
     newQuestionId,
     sanitizeForm,
     sectionItems,
@@ -455,6 +459,37 @@
     await load(type);
   }
 
+  // A form leaves and enters as a file in the same format as the repo's scouting-forms/ folder.
+  function exportForm() {
+    const file = formToFile(formType, form, { exportedAt: new Date().toISOString(), basedOnVersion: liveVersion });
+    const blob = new Blob([JSON.stringify(file, null, 2) + '\n'], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `${formType}-scouting-form${liveVersion ? `-v${liveVersion}` : ''}.json`
+    });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  async function importForm(event) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    const read = formFromFile(await file.text(), formType);
+    if (read.error) {
+      say(read.error, 'error');
+      return;
+    }
+    commit(read.schema);
+    restoredFrom = null;
+    selectedId = null;
+    say(
+      `Imported ${file.name} into your draft. ${read.warnings.join(' ')} Publish to make it live; Undo brings your draft back.`,
+      read.warnings.length ? 'warn' : 'ok',
+      read.warnings.length ? 0 : 8000
+    );
+  }
+
   function onKeydown(event) {
     if (!(event.metaKey || event.ctrlKey) || event.target?.closest?.('input, textarea, [contenteditable]')) return;
     const key = event.key.toLowerCase();
@@ -519,6 +554,12 @@
         ><Redo2 size={16} /></button
       >
       <button class="btn btn-outline btn-sm" on:click={() => (historyOpen = true)}><History size={15} /> History</button>
+      <button class="btn btn-outline btn-sm" title="Download this form as a file" on:click={exportForm}
+        ><Download size={15} /> Export</button
+      >
+      <label class="btn btn-outline btn-sm" class:disabled={readonly} title="Load a form file into your draft"
+        ><Upload size={15} /> Import<input type="file" accept="application/json,.json" hidden disabled={readonly} on:change={importForm} /></label
+      >
       {#if saveState !== 'idle'}
         <button class="btn btn-outline btn-sm" on:click={discard}>Discard draft</button>
       {/if}

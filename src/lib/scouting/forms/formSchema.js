@@ -18,179 +18,33 @@ const block = (key, label, { help = null, optional = true, note = '' } = {}) => 
   note
 });
 
-export const FORM_TYPES = Object.freeze({
-  match: {
-    label: 'Match scouting',
-    sections: [
-      {
-        id: 'prematch',
-        label: 'Pre-match',
-        blocks: [
-          block('prematch.assignment', 'Match, robot and alliance', {
-            optional: false,
-            rename: false,
-            note: 'Scout name, match number, robot number and alliance. Every report needs these.'
-          }),
-          block('prematch.preload', 'Preload', { optional: false, note: 'Whether the robot started with a preload.' }),
-          block('prematch.start', 'Starting position', {
-            optional: false,
-            help: 'Your alliance wall is on the left. Highlights indicate starting lanes, not exact robot locations.',
-            note: 'Which of the five starting lanes the robot used.'
-          })
-        ]
-      },
-      {
-        id: 'auto',
-        label: 'Auto',
-        blocks: [
-          block('auto.ran', 'Did autonomous run?'),
-          block('auto.points', 'Estimated points scored', {
-            help: 'Drag to estimate, or type an exact number, a range such as 40-60, or a lower bound such as 100+. Optional.'
-          }),
-          block('auto.sources', 'Where did the robot collect fuel?', {
-            help: 'Select every location observed during autonomous.'
-          }),
-          block('auto.cycles', 'Autonomous cycles')
-        ]
-      },
-      {
-        id: 'teleop',
-        label: 'Teleop',
-        blocks: [
-          block('teleop.roles', 'Observed roles', {
-            optional: false,
-            help: 'Select every role this robot meaningfully performed.',
-            note: 'Scorer, Defense or Shuttler. Used by Power Rankings.'
-          }),
-          block('teleop.balls', 'Balls scored', {
-            optional: false,
-            help: 'Pick a suggested range from the list or type a number, a range or a lower bound, like 137, 100-150 or 500+.',
-            note: 'The scoring estimate every analytics page uses.'
-          }),
-          block('teleop.defense', 'Defense details', {
-            optional: false,
-            note: 'Appears when Defense is picked: robots defended, hub active/inactive, shifts and a 1-10 effectiveness.'
-          }),
-          block('teleop.notes', 'Real-scout observations', {
-            note: 'Required when the robot played defense: the scout describes the defense.'
-          })
-        ]
-      },
-      {
-        id: 'shuttling',
-        label: 'Shuttling',
-        blocks: [
-          block('shuttling.shuttled', 'Did the robot shuttle fuel?', {
-            help: 'Shuttling is moving fuel toward your alliance zone without scoring it, by driving it, pushing it or launching it.',
-            note: 'Yes or no; the other shuttling questions appear only for yes.'
-          }),
-          block('shuttling.amount', 'Fuel shuttled', {
-            help: 'Pick a suggested range or type a number, a range or a lower bound, like 30, 25-50 or 100+.'
-          }),
-          block('shuttling.rating', 'Shuttling effectiveness', {
-            help: '1 is poor and 5 is excellent. Leave blank when you could not judge it.'
-          }),
-          block('shuttling.notes', 'Shuttling notes')
-        ]
-      },
-      {
-        id: 'performance',
-        label: 'Performance',
-        blocks: [
-          block('teleop.ratings', 'Shot accuracy', {
-            optional: false,
-            help: 'Each number shows the band it stands for. Boundary values belong to the lower band.',
-            note: 'Every Performance answer is required.'
-          }),
-          block('performance.bps', 'Balls per second', {
-            optional: false,
-            note: 'A slider; its 1-5 band also fills the older BPS rating.'
-          }),
-          block('teleop.intake', 'Intake speed', { optional: false, help: '1 is slow and 3 is fast.' }),
-          block('performance.driver', 'Driver skill', {
-            optional: false,
-            help: '1 is poor and 5 is excellent: field awareness, control and decision making.'
-          }),
-          block('performance.ranking', 'Power ranking', {
-            optional: false,
-            help: 'Tap the robots from best to worst in this match. Mark a robot "Didn\'t watch" to leave it out; every scout\'s rankings are averaged per match.',
-            note: 'Averaged across scouts on Power Rankings.'
-          }),
-          block('performance.notes', 'Notes about performance', { optional: false })
-        ]
-      },
-      {
-        id: 'robot',
-        label: 'Robot',
-        blocks: [
-          block('teleop.status', 'Robot status', {
-            optional: false,
-            note: 'Active, dead or stopped for each shift (1-4) and endgame.'
-          }),
-          block('teleop.crash', 'Significant crash', {
-            optional: false,
-            note: 'Whether the robot crashed, and into what.'
-          }),
-          block('auto.collision', 'Any collision during auto?'),
-          block('robot.intakeJammed', 'Intake jammed during the match'),
-          block('postmatch.cards', 'Cards'),
-          block('robot.fouls', 'Fouls', {
-            help: 'Count the fouls called on this robot. Leave at — if you could not tell.',
-            note: 'Any foul asks for its nature from a dropdown.'
-          }),
-          block('postmatch.break', 'Mechanical break', {
-            optional: false,
-            note: 'Needed to decide whether the pit crew must be told.'
-          }),
-          block('robot.breaks', 'What broke and how the team handled it', {
-            help: "What broke, how it changed the robot's play, and how the team played around it or fixed it.",
-            note: 'What broke is required when there was a mechanical break.'
-          }),
-          block('postmatch.beached', 'Robot became beached'),
-          block('postmatch.problem', 'Send a problem to the pit crew', {
-            note: 'Hides only the optional checkbox. When a robot dies or breaks, the required pit problem report still appears.'
-          })
-        ]
-      },
-      { id: 'postmatch', label: 'Post-match', blocks: [block('postmatch.notes', 'Post-match scout notes')] }
-    ]
-  },
-  pit: {
-    label: 'Pit scouting',
-    // One Main page (plus Photos, which has no questions). Questions an admin added to the old Extra tab
-    // before V4.46.0 are read back onto Main instead of being dropped.
-    movedSections: { extra: 'main' },
-    sections: [
-      {
-        id: 'main',
-        label: 'Main',
-        blocks: [
-          block('main.drivebase', 'Drivebase', { note: 'One described answer, e.g. "Swerve, MK5n modules".' }),
-          block('main.dimensions', 'Drivetrain dimensions (in)', { note: 'Length, width and height.' }),
-          block('main.weight', 'Robot weight (without bumpers and battery)'),
-          block('main.trench', 'Trench, bump or both?'),
-          block('main.shooter', 'Shooter and indexer', { note: 'Shooter type, indexer type and hopper capacity.' }),
-          block('main.bps', 'Estimated BPS'),
-          block('main.autos', 'Autos', { note: 'Each auto they can run, drawn on the field with a name and notes.' }),
-          block('main.autoPoints', 'How many points do you usually score in auto?'),
-          block('main.roles', 'Preferred role in the game'),
-          block('main.strengths', 'Strengths'),
-          block('main.weaknesses', 'Weaknesses and what is likely to break'),
-          block('main.breaker', 'Main breaker and CAN', {
-            rename: false,
-            note: 'Main breaker brand and bump protection, number of CANivores, CAN bus count.'
-          }),
-          block('main.controls', 'Controls and software', {
-            rename: false,
-            note: 'Coprocessor, WPILib, auto tools, vision, language.'
-          }),
-          block('main.contact', "Strat person's phone number"),
-          block('main.notes', 'Extra notes')
-        ]
-      }
-    ]
-  }
-});
+// The built-in forms for this season come from JSON files in the repo's scouting-forms/ folder (one folder per
+// game), so a new game is a new folder, not a code change. Each file lists the form's sections and their built-in
+// questions; the designer (Scouting Admin > Edit) changes everything else and can export and import the same format.
+import matchForm from '$forms/2026-rebuilt/match.json';
+import pitForm from '$forms/2026-rebuilt/pit.json';
+
+/** A form file's definition, in the shape the rest of the app uses. */
+export function formDefinition(file) {
+  return {
+    label: file.label,
+    ...(file.movedSections ? { movedSections: file.movedSections } : {}),
+    sections: file.sections.map((section) => ({
+      id: section.id,
+      label: section.label,
+      blocks: section.blocks.map((entry) =>
+        block(entry.key, entry.label, {
+          help: entry.help ?? null,
+          optional: entry.required ? false : true,
+          note: entry.note || ''
+        })
+      )
+    }))
+  };
+}
+
+export const FORM_FILES = Object.freeze({ match: matchForm, pit: pitForm });
+export const FORM_TYPES = Object.freeze({ match: formDefinition(matchForm), pit: formDefinition(pitForm) });
 
 export const coreId = (key) => `core:${key}`;
 export const coreBlocksIn = (formType, sectionId) =>
@@ -643,4 +497,48 @@ export const isAnswered = (question, answers) => {
 /** The first unanswered required question among these, or null. */
 export function firstMissing(questions, answers) {
   return (questions || []).find((question) => question.required && !isAnswered(question, answers)) || null;
+}
+
+export const FORM_FILE_FORMAT = 'frc-scouting-form';
+
+/**
+ * A form as a file, in the same format as the files in scouting-forms/: the season's built-in sections and questions,
+ * plus `design`, everything the designer changed (added questions, wording, visibility, order, looks). Exported from
+ * Scouting Admin > Edit, and the file can be imported back, shared with another team, or committed to the repo.
+ */
+export function formToFile(formType, schema, extra = {}) {
+  const { design: _baseline, ...file } = FORM_FILES[formType];
+  return { ...file, ...extra, design: sanitizeForm(schema, formType) };
+}
+
+/**
+ * Reads an imported form file. Returns { schema, warnings } or { error }. The design is checked against this
+ * app's built-in form: questions in sections it doesn't have, and changes to built-in questions it doesn't know,
+ * are left out and listed in the warnings.
+ */
+export function formFromFile(raw, formType) {
+  let file = raw;
+  if (typeof raw === 'string') {
+    try {
+      file = JSON.parse(raw);
+    } catch {
+      return { error: 'That file is not valid JSON.' };
+    }
+  }
+  if (!file || typeof file !== 'object' || file.format !== FORM_FILE_FORMAT)
+    return { error: 'That is not a scouting form file.' };
+  if (file.form !== formType)
+    return { error: `That file is a ${FORM_TYPES[file.form]?.label.toLowerCase() || file.form} form, not ${FORM_TYPES[formType].label.toLowerCase()}.` };
+  const design = file.design && typeof file.design === 'object' ? file.design : {};
+  const schema = sanitizeForm(design, formType);
+  const warnings = [];
+  const dropped = (design.questions?.length || 0) - schema.questions.length;
+  if (dropped > 0) warnings.push(`${dropped} question${dropped === 1 ? '' : 's'} could not be read and were left out.`);
+  const unknown = Object.keys(design.core || {}).filter((key) => !schema.core[key] && design.core[key]);
+  const known = new Set(FORM_TYPES[formType].sections.flatMap((section) => section.blocks.map((entry) => entry.key)));
+  const missing = unknown.filter((key) => !known.has(key));
+  if (missing.length) warnings.push(`Changes to ${missing.length} built-in question${missing.length === 1 ? '' : 's'} this app doesn't have were left out.`);
+  if (file.game && file.game !== FORM_FILES[formType].game)
+    warnings.push(`The file is for ${file.game}; this app's built-in form is ${FORM_FILES[formType].game}.`);
+  return { schema, warnings };
 }

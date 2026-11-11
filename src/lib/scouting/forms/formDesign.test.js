@@ -82,3 +82,45 @@ describe('form designer schema', () => {
     expect(problems.s).toContain('The slider needs a minimum below its maximum.');
   });
 });
+
+import { FORM_FILES, formFromFile, formToFile } from './formSchema.js';
+
+describe('form files', () => {
+  it('round-trips a design through the file format', () => {
+    const design = sanitizeForm(
+      { questions: [{ ...createQuestion('slider', 'teleop'), id: 'q1', label: 'BPS' }], core: { 'teleop.notes': { hidden: true } } },
+      'match'
+    );
+    const file = formToFile('match', design, { version: 3 });
+    expect(file).toMatchObject({ format: 'frc-scouting-form', form: 'match', version: 3, game: FORM_FILES.match.game });
+    expect(file.sections.length).toBe(FORM_FILES.match.sections.length);
+    const back = formFromFile(JSON.stringify(file), 'match');
+    expect(back.schema).toEqual(design);
+    expect(back.warnings).toEqual([]);
+  });
+
+  it('refuses other files and says what it left out', () => {
+    expect(formFromFile('not json', 'match').error).toMatch(/JSON/);
+    expect(formFromFile({ format: 'x' }, 'match').error).toMatch(/not a scouting form/);
+    expect(formFromFile({ format: 'frc-scouting-form', form: 'pit' }, 'match').error).toMatch(/pit scouting/);
+    const read = formFromFile(
+      {
+        format: 'frc-scouting-form',
+        form: 'match',
+        game: '2027 Something',
+        design: { questions: [{ id: 'x', type: 'nope' }], core: { 'old.block': { hidden: true } } }
+      },
+      'match'
+    );
+    expect(read.warnings.join(' ')).toMatch(/1 question could not be read.*built-in question this app doesn't have.*2027/);
+  });
+
+  it('the repo files are well formed: unique section ids and block keys, and an empty design', () => {
+    for (const file of Object.values(FORM_FILES)) {
+      const keys = file.sections.flatMap((section) => section.blocks.map((entry) => entry.key));
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(new Set(file.sections.map((s) => s.id)).size).toBe(file.sections.length);
+      expect(file.design).toEqual({ questions: [], core: {}, order: {} });
+    }
+  });
+});
