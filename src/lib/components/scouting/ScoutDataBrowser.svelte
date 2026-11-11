@@ -1,4 +1,6 @@
 <script>
+  import { afterUpdate, onMount, tick } from 'svelte';
+  import { fly } from 'svelte/transition';
   import Select from '$lib/components/common/Select.svelte';
   import ScoutReportRow from './ScoutReportRow.svelte';
   import {
@@ -91,6 +93,25 @@
     { key: 'disputed', label: 'Scouts disagree' },
     { key: 'recent', label: 'Latest' }
   ];
+
+  // The active tab's pill slides between tabs; the view below fades in. Both skip motion when the device asks.
+  let tabsEl;
+  let pill = { left: 0, width: 0 };
+  const motion = (ms) =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms;
+  function placePill() {
+    const button = tabsEl?.querySelector(`[data-view="${view}"]`);
+    if (!button) return;
+    const next = { left: button.offsetLeft, width: button.offsetWidth };
+    if (next.left !== pill.left || next.width !== pill.width) pill = next;
+  }
+  onMount(() => {
+    tick().then(placePill);
+    const observer = new ResizeObserver(placePill);
+    if (tabsEl) observer.observe(tabsEl);
+    return () => observer.disconnect();
+  });
+  afterUpdate(placePill);
 </script>
 
 <div class="browser">
@@ -100,9 +121,17 @@
       · <button class="link" type="button" on:click={() => setView('look')}>{needsLookTotal} need a look</button>{/if}
   </p>
 
-  <div class="tabs" role="tablist" aria-label="Ways to browse the data">
+  <div class="tabs" role="tablist" aria-label="Ways to browse the data" bind:this={tabsEl}>
+    <span
+      class="tab-pill"
+      class:ready={pill.width > 0}
+      style:transform={`translateX(${pill.left}px)`}
+      style:width={`${pill.width}px`}
+      aria-hidden="true"
+    ></span>
     {#each VIEWS as item}
       <button
+        data-view={item.key}
         class="tab"
         class:active={view === item.key}
         role="tab"
@@ -149,6 +178,8 @@
     {/if}
   </div>
 
+  {#key view}
+  <div class="view" in:fly={{ y: 6, duration: motion(200) }}>
   {#if !reports.length}
     <p class="empty">No match scouting reports have been submitted for this event yet.</p>
   {:else if view === 'teams'}
@@ -293,6 +324,8 @@
     {#if needsLook.length > limit}<button class="more" type="button" on:click={() => (limit += PAGE)}>Show more</button
       >{/if}
   {/if}
+  </div>
+  {/key}
 </div>
 
 <style>
@@ -315,17 +348,51 @@
     text-decoration: underline;
     text-underline-offset: 2px;
   }
+  .view {
+    display: grid;
+    gap: var(--space-4);
+  }
   .tabs {
-    display: flex;
-    gap: var(--space-1);
-    border-bottom: 1px solid var(--border);
+    position: relative;
+    display: inline-flex;
+    justify-self: start;
+    max-width: 100%;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
     overflow-x: auto;
   }
+  /* The active tab's background, which slides from tab to tab. */
+  .tab-pill {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 0;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tab-pill.ready {
+    opacity: 1;
+    transition:
+      transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+      width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tab-pill.ready {
+      transition: none;
+    }
+  }
   .tab {
-    padding: var(--space-2) var(--space-4);
+    position: relative;
+    z-index: 1;
+    min-height: 2rem;
+    padding: 0 var(--space-4);
     border: 0;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--text-secondary);
     font: inherit;
@@ -336,9 +403,11 @@
   .tab:hover {
     color: var(--text);
   }
+  .tab {
+    transition: color 0.2s ease;
+  }
   .tab.active {
-    color: var(--accent-strong);
-    border-bottom-color: var(--accent);
+    color: var(--text-strong, var(--text));
   }
   .count {
     margin-left: 0.4rem;
@@ -577,7 +646,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .team.name {
       white-space: normal;

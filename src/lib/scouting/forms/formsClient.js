@@ -20,6 +20,17 @@ export const loadAdminForm = (form) => call(`/api/scouting-forms?form=${form}&ad
 export const saveDraft = (form, schema, baseVersion) =>
   post({ action: 'save-draft', form, schema, base_version: baseVersion });
 export const discardDraft = (form) => post({ action: 'discard-draft', form });
+/** Uploads a picture for a question or an option; resolves to its public address. */
+export async function uploadFormImage(form, file) {
+  if (file.size > 256 * 1024) throw new Error('Pictures must be 256 KB or smaller.');
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.readAsDataURL(file);
+  });
+  return (await post({ action: 'upload-image', form, dataUrl })).url;
+}
 export const publishForm = (form, schema, baseVersion, note, restoredFrom) =>
   post({ action: 'publish', form, schema, base_version: baseVersion, note, restored_from: restoredFrom });
 

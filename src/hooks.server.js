@@ -12,6 +12,16 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'same-origin'
 };
 
+// The form designer (Scouting Admin > Edit) shows the real scouting page in a frame, so that one view may be framed,
+// but only by this site itself. Everything else stays unframeable.
+const DESIGN_PAGES = new Set(['/matchscout', '/pitscout']);
+const SAME_ORIGIN_FRAMING = {
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Security-Policy': "frame-ancestors 'self'"
+};
+export const framingHeaders = (url) =>
+  DESIGN_PAGES.has(url.pathname) && url.searchParams.get('design') === '1' ? SAME_ORIGIN_FRAMING : {};
+
 export async function csrfCheck({ event, resolve }) {
   const { request, url } = event;
   const method = request.method;
@@ -26,7 +36,7 @@ export async function csrfCheck({ event, resolve }) {
   }
   const response = await resolve(event);
   try {
-    for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+    for (const [header, value] of Object.entries({ ...SECURITY_HEADERS, ...framingHeaders(url) })) {
       if (!response.headers.has(header)) {
         response.headers.set(header, value);
       }

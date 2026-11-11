@@ -79,7 +79,7 @@ describe('team settings', () => {
       brand_color: 'not-a-color',
       default_theme: 'neon',
       logo_url: 'javascript:alert(1)',
-      hidden_features: ['predictions', 'bogus'],
+      hidden_features: ['epa', 'bogus'],
       setup_completed_at: null
     };
     const settings = normalizeTeamSettings(row);
@@ -90,7 +90,7 @@ describe('team settings', () => {
       brandColor: '#2563eb',
       defaultTheme: 'dark',
       logoUrl: '',
-      hiddenFeatures: ['predictions'],
+      hiddenFeatures: ['epa'],
       allowSignUp: true
     });
   });

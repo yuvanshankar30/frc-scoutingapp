@@ -7,7 +7,7 @@ import {
   requiresPitProblemReport,
   validatePitProblemHandoff
 } from '$lib/server/scouting/matchScoutingSchema.js';
-import { customAnswersFor } from '$lib/server/scouting/customAnswers.js';
+import { customAnswersFor, formRulesFor } from '$lib/server/scouting/customAnswers.js';
 import { notifyPitProblem } from '$lib/server/integrations/pit_problem_notifications.js';
 import {
   combinedPitProblemFields,
@@ -15,12 +15,12 @@ import {
   scoutObservation
 } from '$lib/scouting/pitProblemObservations.js';
 import { averagePowerRankings } from '$lib/scouting/powerRankingAverages.js';
-import { matchKeyFor } from '$lib/scouting/training.js';
+import { matchKeyFor } from '$lib/matches/matchKeys.js';
 import { tbaMatchLabel } from '$lib/matches/matchKeys.js';
 import { canonicalMatchKey, canonicalReports } from '$lib/matches/matchKeys.js';
 import { resolveScoutedBy, scoutDisplayName, scoutProfilesFor } from '$lib/server/scouting/scoutIdentity.js';
 import { tbaMatchKeyFor } from '$lib/server/scouting/tbaEventLink.js';
-import { canAdministerFrom, isApprovedProfile } from '$lib/server/scouting/scoutingAccess.js';
+import { canAdministerFrom, canAdministerOr, isApprovedProfile } from '$lib/server/scouting/scoutingAccess.js';
 import { tbaJson } from '$lib/server/integrations/tba.js';
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' };
@@ -133,34 +133,11 @@ export async function GET({ request, url }) {
 
   const resource = url.searchParams.get('resource') || 'entries';
 
-  // The robots in one match, for the Performance tab's power ranking. A training match comes from its stored
-  // past match (with the video to watch); a real match comes from The Blue Alliance. An unknown match returns
+  // The robots in one match, for the Performance tab's power ranking, from The Blue Alliance. An unknown match returns
   // empty alliances, and the page lets the scout type the robots in instead.
   if (resource === 'match-teams') {
     const matchKey = matchKeyFor(eventKey, url.searchParams.get('match_key'));
     if (!matchKey) return json({ error: 'match_key is required' }, { status: 400, headers: NO_STORE_HEADERS });
-    const training = await db.from('scouting_training_matches').select('*').eq('match_key', matchKey).maybeSingle();
-    if (training.data) {
-      const row = training.data;
-      return json(
-        {
-          success: true,
-          data: {
-            match_key: matchKey,
-            red: row.red_team_keys,
-            blue: row.blue_team_keys,
-            training: {
-              source_event_key: row.source_event_key,
-              source_event_name: row.source_event_name,
-              source_match_key: row.source_match_key,
-              source_label: row.source_label,
-              video_key: row.video_key
-            }
-          }
-        },
-        { headers: NO_STORE_HEADERS }
-      );
-    }
     const match = await tbaJson(`/match/${encodeURIComponent(await tbaMatchKeyFor(matchKey))}/simple`);
     return json(
       {
@@ -169,8 +146,7 @@ export async function GET({ request, url }) {
           match_key: matchKey,
           red: match?.alliances?.red?.team_keys || [],
           blue: match?.alliances?.blue?.team_keys || [],
-          label: match ? tbaMatchLabel(match) : null,
-          training: null
+          label: match ? tbaMatchLabel(match) : null
         }
       },
       { headers: NO_STORE_HEADERS }
@@ -246,7 +222,8 @@ export async function POST({ request }) {
   if (action === 'save-entry') {
     // All live submissions follow v2. The legacy normalizer exists only for
     // historical data; omitting form_version cannot bypass required answers.
-    const { value, error: invalid } = normalizeMatchScoutEntry({ ...body, form_version: 2 }, actor.id);
+    const rules = await formRulesFor(db, 'match', body);
+    const { value, error: invalid } = normalizeMatchScoutEntry({ ...body, form_version: 2 }, actor.id, rules);
     if (invalid) return json({ error: invalid }, { status: 400 });
     const handoffError = validatePitProblemHandoff(body);
     if (handoffError) return json({ error: handoffError }, { status: 400 });
@@ -271,13 +248,18 @@ export async function POST({ request }) {
         .select('*')
         .single();
     let { data, error } = await save(value);
-    // Until the robot_present migration (20261024000000) reaches a database, save without the column so no report
+    // On a database built from an older schema, save without the column so no report
     // is lost, keeping a no-show readable in the notes.
     if (error && /robot_present/.test(error.message || '')) {
       const { robot_present: robotPresent, ...withoutPresent } = value;
       if (robotPresent === false)
         withoutPresent.post_notes = ['Robot did not show up.', withoutPresent.post_notes].filter(Boolean).join(' ');
       ({ data, error } = await save(withoutPresent));
+    }
+    // Same for the detail columns: the report saves without them rather than not at all.
+    if (error && /\b(defense|bps|robot_status_shifts|foul_nature|foul_details)\b/.test(error.message || '')) {
+      const { defense, bps, robot_status_shifts, foul_nature, foul_details, ...withoutNew } = value;
+      ({ data, error } = await save(withoutNew));
     }
     if (error) return json({ error: error.message }, { status: 500 });
 
@@ -363,7 +345,7 @@ export async function POST({ request }) {
     // access rather than just "logged in" - same bar as publishing scout
     // assignments (see computeScoutingAccess in api/scout-assignments).
     const rosterKeys = await fetchRosterKeys(db, actor.id);
-    if (!canAdministerFrom(profile, rosterKeys)) return json({ error: 'Forbidden' }, { status: 403 });
+    if (!canAdministerOr(profile, rosterKeys, 'REMOVE_REPORTS')) return json({ error: 'Forbidden' }, { status: 403 });
 
     const { error } = await db.from('match_scout_entries').delete().eq('id', body.id);
     if (error) return json({ error: error.message }, { status: 500 });

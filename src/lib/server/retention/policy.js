@@ -1,4 +1,4 @@
-// What the on-demand data cleanup (#125) may delete, and when. Nothing is deleted on a schedule: the daily check only
+// What the on-demand data cleanup may delete, and when. Nothing is deleted on a schedule: the daily check only
 // plans, and only when a storage limit is crossed; an admin approves every cleanup.
 //
 // The policy names rows and objects, not whole tables:

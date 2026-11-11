@@ -26,6 +26,16 @@
   $: if (row) showAllReports = false;
 
   const team = (key) => String(key || '').replace(/^frc/i, '');
+  // Hovering (or focusing) a match bar shows what the scouts recorded in that match, above the bar.
+  let tip = null;
+  let timelineCard;
+  function showTip(entry, column) {
+    if (!timelineCard) return;
+    const card = timelineCard.getBoundingClientRect();
+    const box = column.getBoundingClientRect();
+    const x = Math.min(Math.max(box.left - card.left + box.width / 2, 96), card.width - 96);
+    tip = { entry, x, y: box.top - card.top };
+  }
   const one = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits) : '—');
   const whole = (value) => (Number.isFinite(value) ? Math.round(value).toString() : '—');
   const pct = (value) => (Number.isFinite(value) ? `${Math.round(value * 100)}%` : '—');
@@ -210,7 +220,7 @@
       </section>
     </div>
 
-    <section class="card" aria-labelledby="timeline-title">
+    <section class="card timeline-card" aria-labelledby="timeline-title" bind:this={timelineCard}>
       <div class="card-head">
         <h3 id="timeline-title">Match by match</h3>
         <span class="legend"
@@ -223,9 +233,16 @@
       {:else}
         <div class="timeline" role="list">
           {#each timeline as entry (entry.matchKey)}
+            <!-- Focusable so keyboard users can bring up the same breakdown a hover shows. -->
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
             <div
               class="col"
               role="listitem"
+              tabindex="0"
+              on:mouseenter={(event) => showTip(entry, event.currentTarget)}
+              on:focus={(event) => showTip(entry, event.currentTarget)}
+              on:mouseleave={() => (tip = null)}
+              on:blur={() => (tip = null)}
               aria-label={`${entry.label}: ${entry.points == null ? 'not scouted' : `${Math.round(entry.points)} scouted points`}${entry.result ? `, ${entry.result} ${entry.score}-${entry.opponentScore}` : ''}`}
             >
               <span class="val">{entry.noShow ? '0' : whole(entry.points)}</span>
@@ -245,6 +262,33 @@
             </div>
           {/each}
         </div>
+        {#if tip}
+          <div class="tip" aria-hidden="true" style:left={`${tip.x}px`} style:top={`${tip.y}px`}>
+            <b>{tip.entry.label} · {tip.entry.side === 'red' ? 'Red' : 'Blue'}</b>
+            {#if tip.entry.noShow}
+              <span class="tip-note">Did not show up (counted as 0)</span>
+            {:else if tip.entry.points == null}
+              <span class="tip-note">{tip.entry.played ? 'Not scouted' : 'Not played yet'}</span>
+            {:else}
+              <dl>
+                <dt>Auto</dt><dd>{one(tip.entry.autoPoints ?? 0)}</dd>
+                <dt>Teleop</dt><dd>{one(tip.entry.teleopPoints ?? 0)}</dd>
+                <dt class="total">Scouted total</dt><dd class="total">{one(tip.entry.points)}</dd>
+              </dl>
+              <span class="tip-note"
+                >From {tip.entry.reports} report{tip.entry.reports === 1 ? '' : 's'}{tip.entry.incident
+                  ? ' · incident reported'
+                  : ''}</span
+              >
+            {/if}
+            {#if tip.entry.result}
+              <span class="tip-note"
+                >{tip.entry.result === 'win' ? 'Won' : tip.entry.result === 'loss' ? 'Lost' : 'Tied'}
+                {tip.entry.score}–{tip.entry.opponentScore} (official)</span
+              >
+            {/if}
+          </div>
+        {/if}
       {/if}
     </section>
 
@@ -416,15 +460,20 @@
     gap: var(--space-4);
     min-width: 0;
   }
+  /* The grid gap is the only spacing between sections (no stray card margins), so every gap is the same. */
+  .brief > :global(*),
+  .two > :global(*) {
+    margin: 0;
+  }
   .hero {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: var(--space-4);
     flex-wrap: wrap;
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     border: 1px solid var(--border);
-    border-left: 4px solid var(--accent);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .hero-id {
@@ -436,9 +485,10 @@
   .number {
     font-family: var(--font-display);
     font-size: 2.6rem;
-    font-weight: 800;
+    font-weight: 500;
+    letter-spacing: -0.03em;
     line-height: 1;
-    color: var(--accent-strong);
+    color: var(--text-strong, var(--text));
     font-variant-numeric: tabular-nums;
   }
   .hero h2 {
@@ -465,6 +515,7 @@
     min-height: 3.25rem;
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     background: var(--surface-2);
   }
   .chip small {
@@ -498,15 +549,19 @@
     min-height: 7.5rem;
     padding: var(--space-4);
     border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .metric .k {
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
   }
   .metric strong {
+    font-weight: 500;
+    letter-spacing: -0.02em;
     font-size: 2.1rem;
     line-height: 1.1;
     font-variant-numeric: tabular-nums;
@@ -525,8 +580,9 @@
     gap: var(--space-3);
     align-content: start;
     min-width: 0;
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .card-head {
@@ -538,7 +594,11 @@
   }
   .card h3 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
   }
   .card h4 {
     margin: var(--space-2) 0 0;
@@ -620,6 +680,63 @@
     background: var(--danger);
   }
   /* One fixed-width column per match, scrolling sideways when there are many, so labels never overlap. */
+  .timeline-card {
+    position: relative;
+  }
+  .col {
+    border-radius: var(--radius-sm, 6px);
+    outline-offset: 2px;
+  }
+  .col:hover .track,
+  .col:focus-visible .track {
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .tip {
+    position: absolute;
+    z-index: 5;
+    transform: translate(-50%, calc(-100% - 6px));
+    display: grid;
+    gap: 4px;
+    min-width: 11rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 10px);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--text-sm);
+    pointer-events: none;
+    animation: tip-in 0.12s ease-out;
+  }
+  .tip dl {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px var(--space-3);
+    margin: 0;
+  }
+  .tip dt {
+    color: var(--text-secondary);
+  }
+  .tip dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .tip .total {
+    padding-top: 3px;
+    border-top: 1px solid var(--border);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .tip-note {
+    color: var(--text-muted);
+    font-size: max(var(--text-min), 0.75rem);
+  }
+  @keyframes tip-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, calc(-100% - 2px));
+    }
+  }
   .timeline {
     display: grid;
     grid-auto-flow: column;
@@ -686,13 +803,14 @@
     gap: var(--space-1);
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     background: var(--surface-2);
   }
   .upcoming li.red {
-    border-left: 3px solid var(--red-base);
+    box-shadow: inset 3px 0 0 var(--alliance-red-text);
   }
   .upcoming li.blue {
-    border-left: 3px solid var(--blue-base);
+    box-shadow: inset 3px 0 0 var(--alliance-blue-text);
   }
   .up-top {
     display: flex;

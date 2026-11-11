@@ -16,7 +16,14 @@
   import { isPhone } from '$lib/stores/device.js';
   import TeamChartsPanel from '$lib/components/scouting/TeamChartsPanel.svelte';
   import { teamGridRows } from '$lib/scouting/teamCharts.js';
-  import { normalizeAutoOptions, normalizeClimbOptions, normalizeTechnicalDetails } from '$lib/scouting/pitForm.js';
+  import {
+    PIT_ABILITIES,
+    dialablePhone,
+    normalizeAutoOptions,
+    normalizeClimbOptions,
+    normalizeTechnicalDetails,
+    weightedAbilityScore
+  } from '$lib/scouting/pitForm.js';
   import { ChevronRight } from 'lucide-svelte';
 
   const SCOPE_OPTIONS = [
@@ -497,6 +504,7 @@
   );
   $: pitClimbOptions = normalizeClimbOptions(pitEntry?.climb_options || []);
   $: pitDetails = normalizeTechnicalDetails(pitEntry?.technical_details);
+  $: pitAbilityScore = weightedAbilityScore(pitDetails);
   // The pit answers shown on Team View, in the order a strategist reads them. Missing answers are "—".
   $: pitFieldRows = pitEntry
     ? [
@@ -504,6 +512,14 @@
         ['Shooter', pitEntry.shooter_type],
         ['Indexer', pitEntry.hopper_type],
         ['Archetype', pitEntry.robot_archetype],
+        // Reports saved before these questions existed would show a row of dashes, so they only appear once answered.
+        ...(pitDetails.preferred_roles.length ? [['Preferred role', pitDetails.preferred_roles.join(', ')]] : []),
+        ...(pitAbilityScore.rated
+          ? [
+              ['Pit ability score', `${pitAbilityScore.score.toFixed(1)}/10`],
+              ...PIT_ABILITIES.map((ability) => [ability.label, outOfTen(pitDetails[ability.key])])
+            ]
+          : []),
         ['HP balls in auto', pitEntry.human_player_balls_in_auto],
         ['Estimated BPS', formatEstimatedBps(pitEntry.estimated_bps)],
         ['Climb options', pitClimbOptions.join(', ')],
@@ -516,6 +532,8 @@
           'Drivetrain (L × W × H)',
           dimensions(pitDetails.drivetrain_length, pitDetails.drivetrain_width, pitDetails.drivetrain_height)
         ],
+        ...(pitDetails.robot_weight ? [['Weight (no bumpers or battery)', pitDetails.robot_weight]] : []),
+        ...(pitDetails.canivore_count ? [['CANivores', pitDetails.canivore_count]] : []),
         ['Motors', pitDetails.motor_types.join(', ')],
         ['Motor controllers', pitDetails.motor_controllers.join(', ')],
         ['Language', pitDetails.programming_language.join(', ')],
@@ -524,7 +542,8 @@
         ['Coprocessor', pitDetails.coprocessor],
         ['Drivebase rating', outOfTen(pitDetails.drivebase_rating)],
         ['Electrical rating', outOfTen(pitDetails.electrical_rating)],
-        ['Reliability rating', outOfTen(pitDetails.overall_reliability_rating)]
+        // Main's ability rows already show reliability once any ability is rated.
+        ...(pitAbilityScore.rated ? [] : [['Reliability rating', outOfTen(pitDetails.overall_reliability_rating)]])
       ].map(([label, value]) => ({
         label,
         value: value === undefined || value === null || value === '' ? '—' : String(value)
@@ -540,6 +559,8 @@
     'drivetrain_length',
     'drivetrain_width',
     'drivetrain_height',
+    'robot_weight',
+    'canivore_count',
     'motor_types',
     'motor_controllers',
     'programming_language',
@@ -549,7 +570,12 @@
     'drivebase_rating',
     'electrical_rating',
     'overall_reliability_rating',
-    'pit_contact_phone'
+    'pit_contact_phone',
+    'strat_phone',
+    'preferred_roles',
+    'strengths',
+    'weaknesses',
+    ...PIT_ABILITIES.map((ability) => ability.key)
   ]);
   $: hasMorePitData = Boolean(
     pitEntry &&
@@ -873,7 +899,7 @@
     on:open={(event) => openFromGrid(event.detail)}
   />
 {:else if $isPhone}
-  <!-- Phone (#124): a compact team header, then one tab at a time instead of one long page. -->
+  <!-- Phone: a compact team header, then one tab at a time instead of one long page. -->
   <section class="tv-hero">
     <div class="tv-photo">{@render photoBlock()}</div>
     <div class="tv-id"><b>{selectedTeamNumber}</b><span>{selectedTeamName}</span></div>
@@ -1005,6 +1031,18 @@
             <dd>{field.value}</dd>
           </div>
         {/each}
+        {#if pitDetails.strengths}
+          <div class="pit-field wide">
+            <dt>Strengths</dt>
+            <dd><span class="pit-long-text">{pitDetails.strengths}</span></dd>
+          </div>
+        {/if}
+        {#if pitDetails.weaknesses}
+          <div class="pit-field wide">
+            <dt>Weaknesses</dt>
+            <dd><span class="pit-long-text">{pitDetails.weaknesses}</span></dd>
+          </div>
+        {/if}
         <div class="pit-field wide">
           <dt>Most likely break point</dt>
           <dd><span class="pit-long-text">{pitEntry.likely_breaking_component || '—'}</span></dd>
@@ -1036,14 +1074,16 @@
       {/if}
     {/if}
   </div>
-  {#if pitEntry?.scout_name || pitEntry?.technical_details?.pit_contact_phone}
+  {#if pitEntry?.scout_name || pitDetails.pit_contact_phone || pitDetails.strat_phone}
     <div class="pit-contact">
-      <strong>Pit contact</strong><span
-        >{pitEntry.scout_name || 'Name not recorded'}{#if pitEntry?.technical_details?.pit_contact_phone}
-          · <a href={`tel:${pitEntry.technical_details.pit_contact_phone}`}
-            >{pitEntry.technical_details.pit_contact_phone}</a
-          >{/if}</span
-      >
+      {#if pitEntry?.scout_name || pitDetails.pit_contact_phone}<strong>Pit contact</strong><span
+          >{pitEntry?.scout_name || 'Name not recorded'}{#if pitDetails.pit_contact_phone}
+            · <a href={`tel:${dialablePhone(pitDetails.pit_contact_phone)}`}>{pitDetails.pit_contact_phone}</a
+            >{/if}</span
+        >{/if}
+      {#if pitDetails.strat_phone}<strong>Strat phone</strong><a href={`tel:${dialablePhone(pitDetails.strat_phone)}`}
+          >{pitDetails.strat_phone}</a
+        >{/if}
     </div>
   {/if}
 {/snippet}
@@ -1603,9 +1643,9 @@
     background: color-mix(in srgb, var(--surface-1) 92%, transparent);
   }
   .pit-contact {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--gap-2);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.25rem var(--gap-2);
     align-items: baseline;
     padding: var(--space-2);
     border-top: 1px solid var(--border);
@@ -1937,7 +1977,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   @media (max-width: 900px) {
     .page-header .teamview-header-copy .form-label {
       display: none;
@@ -2055,7 +2095,7 @@
     margin: var(--space-3) 0;
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .tv-id span {
       white-space: normal;

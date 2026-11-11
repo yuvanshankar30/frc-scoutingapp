@@ -227,7 +227,7 @@
     <a href="/powerrankings">View Power Rankings</a>
   </section>
 
-  <!-- Phone (#124): the match list and the ranking are separate screens. -->
+  <!-- Phone: the match list and the ranking are separate screens. -->
   <div
     class="ranking-workspace"
     class:ph-list={$isPhone && phoneScreen === 'list'}
@@ -483,7 +483,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   .ranking-workspace.ph-list .order-panel,
   .ranking-workspace.ph-rank .match-list {
     display: none;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  blendMatchRankings,
   summarizeTeamEvents,
   summarizeTeamPerformance,
   buildPowerRankings,
@@ -520,5 +521,35 @@ describe('times broken', () => {
 
   it('is zero with no reports', () => {
     expect(summarizeMatchScoutEntries([]).timesBroken).toBe(0);
+  });
+});
+
+describe('blendMatchRankings (Picklist auto rank)', () => {
+  const teams = [
+    { key: 'frc1', team_number: 1, scoutPower: 80, powerRank: 1 },
+    { key: 'frc2', team_number: 2, scoutPower: 60, powerRank: 2 },
+    { key: 'frc3', team_number: 3, scoutPower: 40, powerRank: 3 }
+  ];
+  const rankings = [
+    { match_key: 'm1', ranked_team_keys: ['frc2', 'frc1'] },
+    { match_key: 'm2', ranked_team_keys: ['frc2', 'frc1'] }
+  ];
+
+  it('orders by Scout Power alone at weight 0', () => {
+    expect(blendMatchRankings(teams, rankings, 0).map((team) => team.key)).toEqual(['frc1', 'frc2', 'frc3']);
+  });
+
+  it('lets match rankings move a team up as their weight grows, keeping unranked teams on Scout Power', () => {
+    const blended = blendMatchRankings(teams, rankings, 0.5);
+    expect(blended.map((team) => team.key)).toEqual(['frc2', 'frc1', 'frc3']);
+    expect(blended[0].autoScore).toBe(80); // (60 + 100) / 2
+    expect(blended[1].autoScore).toBe(40); // (80 + 0) / 2
+    expect(blended[2].autoScore).toBe(40); // never ranked: Scout Power only
+    expect(blended[0].humanRank).toBe(1);
+    expect(blended[2].humanVoteCount).toBe(0);
+  });
+
+  it('ignores rankings with no saved orders', () => {
+    expect(blendMatchRankings(teams, [], 1).map((team) => team.autoScore)).toEqual([80, 60, 40]);
   });
 });

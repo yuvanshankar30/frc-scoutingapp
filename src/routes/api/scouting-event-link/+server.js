@@ -87,9 +87,9 @@ async function suggest(query, code) {
 }
 
 export async function GET({ request, url }) {
-  const { actorId, canAdminister, db } = await actorFor(request);
+  const { actorId, can, db } = await actorFor(request);
   if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
-  if (!canAdminister) return json({ error: 'Only scouting admins can link events.' }, { status: 403 });
+  if (!can('MANAGE_EVENT')) return json({ error: 'Only scouting admins can link events.' }, { status: 403 });
   const code = normalizeEventCode(url.searchParams.get('event_key') || '') || '';
   const query = String(url.searchParams.get('q') || '')
     .trim()
@@ -120,9 +120,9 @@ export async function GET({ request, url }) {
 }
 
 export async function POST({ request }) {
-  const { actorId, canAdminister, db } = await actorFor(request);
+  const { actorId, can, db } = await actorFor(request);
   if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
-  if (!canAdminister) return json({ error: 'Only scouting admins can link events.' }, { status: 403 });
+  if (!can('MANAGE_EVENT')) return json({ error: 'Only scouting admins can link events.' }, { status: 403 });
   const body = await request.json().catch(() => null);
   const code = normalizeEventCode(body?.event_key || '');
   if (!code) return json({ error: 'Enter a competition code like 2026mttd.' }, { status: 400 });
@@ -156,7 +156,7 @@ export async function POST({ request }) {
       .single();
     if (error && isMissingColumn(error))
       return json(
-        { error: 'Linking TBA events needs the 20261014000000_scouting_event_tba_link migration.' },
+        { error: 'Linking TBA events needs the current database schema (supabase/migrations) applied.' },
         { status: 503 }
       );
     if (error) throw error;

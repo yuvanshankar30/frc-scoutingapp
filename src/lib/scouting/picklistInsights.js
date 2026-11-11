@@ -17,7 +17,8 @@ function officialRankByTeamKey(officialRankings) {
 /**
  * @param {object} input
  * @param {Array} input.strategyRows      buildStrategyRows() output (our scouting data per team)
- * @param {Array} input.powerRankings     buildPowerRankings() output (key, scoutPower, powerRank)
+ * @param {Array} input.powerRankings     buildPowerRankings() output (key, scoutPower, powerRank), optionally
+ *                                        with applyPairwiseConsensus() fields (humanRank, humanVoteCount)
  * @param {Array} input.officialRankings  TBA event rankings rows ({ team_key, rank })
  * @param {string} input.ourTeamKey       e.g. 'frc254'
  * @returns {{ byTeam: Map<string, object>, ourRank: number|null, aboveUs: string[] }}
@@ -49,6 +50,9 @@ export function buildPicklistInsights({
       aboveUs: ourRank != null && officialRank != null && teamKey !== ourTeamKey && officialRank < ourRank,
       powerRank: power?.powerRank ?? null,
       scoutPower: power?.scoutPower ?? null,
+      // Place in the match-ranking consensus (best-to-worst orders saved on Match Rankings), null if never ranked.
+      matchRank: power?.humanRank ?? null,
+      matchRankVotes: power?.humanVoteCount ?? 0,
       driverSkill: row?.matchScoutSummary?.avgDriverSkill ?? null,
       drivingRank: row?.performance?.avgDrivingRank ?? null,
       timesBroken: row?.matchScoutSummary?.timesBroken ?? 0,

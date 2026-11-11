@@ -5,6 +5,38 @@ import { browser } from '$app/environment';
 // until they pick one, the team's default from Team settings applies. 'scouting-theme' in local storage only
 // remembers the last one for the first paint (app.html), before the account is known.
 const STORAGE_KEY = 'scouting-theme';
+// Set only when the person switches theme themselves. 'scouting-theme' is written on every change (it is just the
+// first-paint hint), so it can't tell "picked dark" apart from "got dark by default"; this can.
+const CHOSEN_KEY = 'scouting-theme-chosen';
+
+function chosenOnDevice() {
+  if (!browser) return false;
+  try {
+    return localStorage.getItem(CHOSEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Remembers that this device's theme was picked by the person, not by the team default. */
+export function markThemeChosen() {
+  if (!browser) return;
+  try {
+    localStorage.setItem(CHOSEN_KEY, '1');
+  } catch {
+    /* private browsing */
+  }
+}
+
+/** Forgets the person's own choice, so the team default applies again (Account > Use the team default). */
+export function clearThemeChoice() {
+  if (!browser) return;
+  try {
+    localStorage.removeItem(CHOSEN_KEY);
+  } catch {
+    /* private browsing */
+  }
+}
 const DEFAULT_THEME = 'modern-dark';
 
 export const THEMES = ['modern', 'modern-dark'];
@@ -59,9 +91,9 @@ export function setTheme(value) {
 /** 'dark' | 'light' (Team settings) -> the theme name used here. */
 export const themeForTeamDefault = (defaultTheme) => (defaultTheme === 'light' ? 'modern' : 'modern-dark');
 
-/** Before anyone is signed in: the theme this device last used, else the team's default. */
+/** Before anyone is signed in: the theme picked on this device, else the team's default. */
 export function applyTeamDefaultTheme(defaultTheme) {
-  if (!savedTheme()) setTheme(themeForTeamDefault(defaultTheme));
+  if (!chosenOnDevice()) setTheme(themeForTeamDefault(defaultTheme));
 }
 
 /** A signed-in person's saved preference wins; with none saved, the team's default applies. */

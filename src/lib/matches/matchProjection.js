@@ -35,7 +35,7 @@ export function allianceProjectedScore(teamKeys = [], projectedScoreByTeam = new
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 }
 
-// When the event's EPA model (#171) rates all six robots, its points and
+// When the event's EPA model rates all six robots, its points and
 // calibrated win chance replace the Scout Power estimate below.
 // epaModel: { byTeam: Map<teamKey, { epa }>, scale }.
 function projectWithEpa(redKeys, blueKeys, epaModel) {

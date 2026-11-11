@@ -1,9 +1,18 @@
 <script>
   import { team } from '$lib/stores/team.js';
   import { onMount } from 'svelte';
-  import { AlertTriangle, ArrowUpDown, ListOrdered, RefreshCw, Search, Swords, Trophy, Vote } from 'lucide-svelte';
+  import {
+    AlertTriangle,
+    ArrowUpDown,
+    Info,
+    ListOrdered,
+    RefreshCw,
+    Search,
+    Swords,
+    Trophy,
+    Vote
+  } from 'lucide-svelte';
   import TeamPicker from '$lib/components/common/TeamPicker.svelte';
-  import { isPhone } from '$lib/stores/device.js';
   import RobotStarPlot from '$lib/components/scouting/RobotStarPlot.svelte';
   import MatchScoutReport from '$lib/components/scouting/MatchScoutReport.svelte';
   import { fetchActiveScoutingEventKey } from '$lib/scouting/scoutingEvent.js';
@@ -259,6 +268,8 @@
     }
     await loadRankings();
   });
+  // Rankings, or the Information view that explains each measure.
+  let view = 'rankings';
 </script>
 
 <svelte:head><title>Power Rankings</title></svelte:head>
@@ -272,9 +283,24 @@
         : ''}, with official TBA data kept as reference.
     </p>
   </div>
-  {#if eventKey}
-    <button class="btn btn-sm" on:click={loadRankings} disabled={loading}><RefreshCw size={14} /> Refresh</button>
-  {/if}
+  <div class="pr-actions">
+    <div class="pr-views" role="tablist" aria-label="Power Rankings view">
+      <button
+        role="tab"
+        aria-selected={view === 'rankings'}
+        class:on={view === 'rankings'}
+        on:click={() => (view = 'rankings')}><ListOrdered size={14} /> Rankings</button
+      >
+      <button role="tab" aria-selected={view === 'info'} class:on={view === 'info'} on:click={() => (view = 'info')}
+        ><Info size={14} /> Information</button
+      >
+    </div>
+    {#if eventKey}
+      <button class="btn btn-outline btn-sm" on:click={loadRankings} disabled={loading}
+        ><RefreshCw size={14} /> Refresh</button
+      >
+    {/if}
+  </div>
 </div>
 
 {#if loading}
@@ -291,46 +317,7 @@
   {#if warning}<p class="text-muted">⚠ {warning}</p>{/if}
   {#if officialNote}<p class="text-muted">⚠ {officialNote}</p>{/if}
 
-  {#if $isPhone}
-    <!-- Phone (#124): the explainer folds away so the rankings come first. -->
-    <details class="ph-key">
-      <summary>What these numbers mean</summary>
-      <section class="measure-key" aria-label="What each measure means">
-        <div>
-          <h3>{$team?.teamNumber || 'Our'} Scout Power</h3>
-          <p>
-            Our own ranking, from our own scouts. 70% observed match performance, 15% explicit note impact, 7.5%
-            pit-reported reliability, and 7.5% TBA OPR; missing inputs are omitted and the remaining weights rebalanced.
-            An open pit problem flag caps a team's self-reported reliability at 7 even if they claimed higher. <strong
-              >Not an FRC ranking</strong
-            > - it exists to inform our picks.
-          </p>
-        </div>
-        <div>
-          <h3>Human Consensus</h3>
-          <p>
-            Shared post-match robot orders and authenticated head-to-head choices produce a separate preference rank;
-            links across matches reveal indirect ordering. It never changes calculated Scout Power. A strong majority
-            against a five-point-or-larger Scout Power gap is flagged for human review.
-          </p>
-        </div>
-        <div>
-          <h3>Official Event Rank</h3>
-          <p>
-            The real qualification standing from The Blue Alliance, which FIRST computes from Ranking Points earned in
-            qualification matches. This is the only official rank on this page.
-          </p>
-        </div>
-        <div>
-          <h3>TBA OPR</h3>
-          <p>
-            Offensive Power Rating: a least-squares estimate of a team's contribution to alliance score, calculated by
-            The Blue Alliance from match results. A statistical estimate, <strong>not an official rank</strong>.
-          </p>
-        </div>
-      </section>
-    </details>
-  {:else}
+  {#if view === 'info'}
     <section class="measure-key" aria-label="What each measure means">
       <div>
         <h3>{$team?.teamNumber || 'Our'} Scout Power</h3>
@@ -365,269 +352,303 @@
         </p>
       </div>
     </section>
-  {/if}
-
-  <section class="surface-card scout-rankings" aria-labelledby="scout-rankings-heading">
-    <div class="scout-rankings-head">
-      <h2 id="scout-rankings-heading"><ListOrdered size={18} /> Scout power rankings</h2>
-      <p>
-        Each scout ranks the robots they watched in a match on the Performance tab, skipping any they didn't watch. A
-        robot's match rank is the average of the scouts who ranked it; its overall rank averages its matches. Lower is
-        better.
-      </p>
-    </div>
-    {#if scoutRankings.teams.length}
-      <div class="table-scroll">
-        <table class="scout-rank-table">
-          <thead
-            ><tr
-              ><th scope="col">#</th><th scope="col">Team</th><th scope="col">Average rank</th><th scope="col"
-                >Matches</th
-              ><th scope="col">Scout rankings</th></tr
-            ></thead
-          >
-          <tbody>
-            {#each scoutRankings.teams as team, index (team.team_key)}
-              <tr
-                ><td>{index + 1}</td><td><b>{bareTeam(team.team_key)}</b></td><td class="num"
-                  >{team.average.toFixed(2)}</td
-                ><td class="num">{team.matches}</td><td class="num">{team.rankings}</td></tr
-              >
-            {/each}
-          </tbody>
-        </table>
+  {:else}
+    <section class="surface-card scout-rankings" aria-labelledby="scout-rankings-heading">
+      <div class="scout-rankings-head">
+        <h2 id="scout-rankings-heading"><ListOrdered size={18} /> Scout power rankings</h2>
+        <p>
+          Each scout ranks the robots they watched in a match on the Performance tab, skipping any they didn't watch. A
+          robot's match rank is the average of the scouts who ranked it; its overall rank averages its matches. Lower is
+          better.
+        </p>
       </div>
-      <details class="per-match">
-        <summary>By match ({scoutRankings.matches.length})</summary>
-        <ul>
-          {#each scoutRankings.matches as match (match.match_key)}
-            <li>
-              <button
-                type="button"
-                class="match-toggle"
-                aria-expanded={openRankingMatch === match.match_key}
-                on:click={() => (openRankingMatch = openRankingMatch === match.match_key ? '' : match.match_key)}
-              >
-                <span>{match.match_key.split('_').pop().toUpperCase()}</span><small
-                  >{match.scouts} scout{match.scouts === 1 ? '' : 's'}</small
+      {#if scoutRankings.teams.length}
+        <div class="table-scroll">
+          <table class="scout-rank-table">
+            <thead
+              ><tr
+                ><th scope="col">#</th><th scope="col">Team</th><th scope="col">Average rank</th><th scope="col"
+                  >Matches</th
+                ><th scope="col">Scout rankings</th></tr
+              ></thead
+            >
+            <tbody>
+              {#each scoutRankings.teams as team, index (team.team_key)}
+                <tr
+                  ><td>{index + 1}</td><td><b>{bareTeam(team.team_key)}</b></td><td class="num"
+                    >{team.average.toFixed(2)}</td
+                  ><td class="num">{team.matches}</td><td class="num">{team.rankings}</td></tr
                 >
-              </button>
-              {#if openRankingMatch === match.match_key}
-                <ol class="match-order">
-                  {#each match.teams as team (team.team_key)}<li>
-                      <b>{bareTeam(team.team_key)}</b>
-                      <span>{team.average.toFixed(2)} · {team.count} scout{team.count === 1 ? '' : 's'}</span>
-                    </li>{/each}
-                </ol>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      </details>
-    {:else}
-      <p class="empty-note">No scout has ranked a match at this event yet.</p>
-    {/if}
-  </section>
-
-  <section class="match-ranking-link">
-    <div>
-      <h2><ListOrdered size={18} /> Match ranking evidence</h2>
-      <p>
-        {matchRankings.length} shared match ranking{matchRankings.length === 1 ? '' : 's'} currently inform Human Rank.
-      </p>
-    </div>
-    <a class="btn btn-outline btn-sm" href="/matchrankings">Rank a match</a>
-  </section>
-
-  <section class="surface-card comparison-card">
-    <h2><Swords size={18} /> Head to Head</h2>
-    <div class="comparison-selectors">
-      <div class="field">
-        <span class="cap">Team A</span><TeamPicker
-          options={teamOptions}
-          bind:value={compareLeftKey}
-          ariaLabel="Team A"
-        />
-      </div>
-      <span>VS</span>
-      <div class="field">
-        <span class="cap">Team B</span><TeamPicker
-          options={teamOptions}
-          bind:value={compareRightKey}
-          ariaLabel="Team B"
-        />
-      </div>
-    </div>
-    {#if compareLeft && compareRight}
-      <RobotStarPlot left={compareLeft} right={compareRight} />
-      <div class="preference-panel">
-        <div>
-          <h3><Vote size={16} /> Scout preference</h3>
-          {#if compareLeftKey === compareRightKey}
-            <p>Choose two different teams to compare and vote.</p>
-          {:else if selectedPair.voteCount}
-            <p>
-              {selectedPair.voteCount} scout vote{selectedPair.voteCount === 1 ? '' : 's'} · Team {compareLeft.team_number}:
-              {fmtPercent(selectedPair.firstShare)} · Team {compareRight.team_number}: {fmtPercent(
-                selectedPair.secondShare
-              )}
-            </p>
-          {:else if !pairwiseVotingAvailable}
-            <p>Human comparison voting will be available after the scouting consensus data migration is applied.</p>
-          {:else}
-            <p>No preference votes for this matchup yet.</p>
-          {/if}
-        </div>
-        <div class="vote-buttons">
-          <button
-            class="btn btn-sm"
-            class:vote-leader={selectedPair.leaderKey === compareLeftKey}
-            disabled={!pairwiseVotingAvailable || voteSaving || compareLeftKey === compareRightKey}
-            on:click={() => savePairwiseVote(compareLeftKey)}>Prefer #{compareLeft.team_number}</button
-          >
-          <button
-            class="btn btn-sm"
-            class:vote-leader={selectedPair.leaderKey === compareRightKey}
-            disabled={!pairwiseVotingAvailable || voteSaving || compareLeftKey === compareRightKey}
-            on:click={() => savePairwiseVote(compareRightKey)}>Prefer #{compareRight.team_number}</button
-          >
-        </div>
-      </div>
-      {#if voteMessage}<p class="vote-message" aria-live="polite">{voteMessage}</p>{/if}
-      <div class="comparison-grid">
-        <strong>#{compareLeft.team_number}</strong><span>Metric</span><strong>#{compareRight.team_number}</strong>
-        <b>{fmt(compareLeft.matchScoutSummary.avgAutoPoints)}</b><span>Auto score</span><b
-          >{fmt(compareRight.matchScoutSummary.avgAutoPoints)}</b
-        >
-        <b>{fmt(compareLeft.matchScoutSummary.avgBallsScored)}</b><span>Teleop score</span><b
-          >{fmt(compareRight.matchScoutSummary.avgBallsScored)}</b
-        >
-        <b>{compareLeft.powerRank ?? '—'}</b><span>Scout power rank (ours)</span><b>{compareRight.powerRank ?? '—'}</b>
-        <b>{fmt(compareLeft.scoutPower)}</b><span>Scout power (ours)</span><b>{fmt(compareRight.scoutPower)}</b>
-        <b>{compareLeft.humanRank ?? '—'}</b><span>Human consensus rank</span><b>{compareRight.humanRank ?? '—'}</b>
-        <b>{fmtPercent(compareLeft.humanWinRate)}</b><span>Human preference win rate</span><b
-          >{fmtPercent(compareRight.humanWinRate)}</b
-        >
-        <b>{compareLeft.humanVoteCount}</b><span>Human comparisons</span><b>{compareRight.humanVoteCount}</b>
-        <b class:review={compareLeft.reviewFlag}>{compareLeft.reviewFlag ? 'Review' : '—'}</b><span
-          >Power/consensus disagreement</span
-        ><b class:review={compareRight.reviewFlag}>{compareRight.reviewFlag ? 'Review' : '—'}</b>
-        <b>{officialRank(compareLeft) ?? '—'}</b><span>Official event rank</span><b
-          >{officialRank(compareRight) ?? '—'}</b
-        >
-        <b>{fmt(officialOpr(compareLeft))}</b><span>TBA OPR</span><b>{fmt(officialOpr(compareRight))}</b>
-        <b>{compareLeft.noteSummary.averageImpact ?? '—'}</b><span>Note impact</span><b
-          >{compareRight.noteSummary.averageImpact ?? '—'}</b
-        >
-        <b>{compareLeft.noteSummary.noteCount}</b><span>Saved notes</span><b>{compareRight.noteSummary.noteCount}</b>
-        <b>{fmt(compareLeft.pitSummary.pitScore)}</b><span>Pit score</span><b>{fmt(compareRight.pitSummary.pitScore)}</b
-        >
-        <b>{compareLeft.pitSummary.rawReliability ?? '—'}</b><span>Pit reliability (1-10)</span><b
-          >{compareRight.pitSummary.rawReliability ?? '—'}</b
-        >
-        <b>{compareLeft.pitSummary.robotArchetype || '—'}</b><span>Archetype</span><b
-          >{compareRight.pitSummary.robotArchetype || '—'}</b
-        >
-        <b>{compareLeft.pitSummary.openProblemCount}</b><span>Open pit problems</span><b
-          >{compareRight.pitSummary.openProblemCount}</b
-        >
-        <b>{compareLeft.scoutSummary.matchesScouted}</b><span>Matches scouted</span><b
-          >{compareRight.scoutSummary.matchesScouted}</b
-        >
-        <b>{compareLeft.matchScoutSummary.reportCount}</b><span>Match reports</span><b
-          >{compareRight.matchScoutSummary.reportCount}</b
-        >
-        <b>{fmt(compareLeft.matchScoutSummary.avgDriverSkill)}</b><span>Driver skill</span><b
-          >{fmt(compareRight.matchScoutSummary.avgDriverSkill)}</b
-        >
-        <b>{fmt(compareLeft.matchScoutSummary.ratingAverages.Reliability)}</b><span>Reliability (match reports)</span><b
-          >{fmt(compareRight.matchScoutSummary.ratingAverages.Reliability)}</b
-        >
-      </div>
-    {/if}
-  </section>
-
-  {#if compareLeft || compareRight}
-    <section class="ranking-reports">
-      <h2>Match scouting evidence</h2>
-      <div class="ranking-report-grid">
-        {#each [compareLeft, compareRight].filter(Boolean) as team (team.key)}
-          <div>
-            <h3>Team {team.team_number}</h3>
-            {#if team.matchScoutEntries.length}
-              {#each team.matchScoutEntries as report (report.id)}
-                <MatchScoutReport {report} />
               {/each}
-            {:else}<p class="text-muted">No match scouting reports yet.</p>{/if}
-          </div>
-        {/each}
-      </div>
+            </tbody>
+          </table>
+        </div>
+        <details class="per-match">
+          <summary>By match ({scoutRankings.matches.length})</summary>
+          <ul>
+            {#each scoutRankings.matches as match (match.match_key)}
+              <li>
+                <button
+                  type="button"
+                  class="match-toggle"
+                  aria-expanded={openRankingMatch === match.match_key}
+                  on:click={() => (openRankingMatch = openRankingMatch === match.match_key ? '' : match.match_key)}
+                >
+                  <span>{match.match_key.split('_').pop().toUpperCase()}</span><small
+                    >{match.scouts} scout{match.scouts === 1 ? '' : 's'}</small
+                  >
+                </button>
+                {#if openRankingMatch === match.match_key}
+                  <ol class="match-order">
+                    {#each match.teams as team (team.team_key)}<li>
+                        <b>{bareTeam(team.team_key)}</b>
+                        <span>{team.average.toFixed(2)} · {team.count} scout{team.count === 1 ? '' : 's'}</span>
+                      </li>{/each}
+                  </ol>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        </details>
+      {:else}
+        <p class="empty-note">No scout has ranked a match at this event yet.</p>
+      {/if}
     </section>
-  {/if}
 
-  <div class="search">
-    <Search size={16} /><input class="form-input" placeholder="Filter teams..." bind:value={search} />
-  </div>
-  <div class="bom-table-container">
-    <table class="bom-table">
-      <thead
-        ><tr>
-          <th><button on:click={() => sortBy('powerRank')}># <ArrowUpDown size={11} /></button></th>
-          <th><button on:click={() => sortBy('team_number')}>Team <ArrowUpDown size={11} /></button></th>
-          <th>Name</th><th
-            ><button on:click={() => sortBy('scoutPower')}>Scout Power <ArrowUpDown size={11} /></button></th
-          >
-          <th><button on:click={() => sortBy('humanRank')}>Human Rank <ArrowUpDown size={11} /></button></th>
-          <th><button on:click={() => sortBy('humanWinRate')}>Win Rate <ArrowUpDown size={11} /></button></th>
-          <th>Review</th>
-          <th class="reference">Official Rank</th>
-          <th class="reference">TBA OPR</th>
-          <th>Data Matches</th><th>Match Reports</th><th>Auto Score</th><th>Teleop Score</th><th>Driver</th><th
-            >Reliability</th
-          ><th>Pit Score</th><th>Pit Reliability</th><th>Problems</th><th>Archetype</th><th>Note Impact</th><th
-            >Notes</th
-          >
-        </tr></thead
-      >
-      <tbody
-        >{#each filteredTeams as team (team.key)}<tr>
-            <td data-label="#" class="strong">{team.powerRank ?? '—'}</td><td data-label="Team" class="mono"
-              >{team.team_number}</td
-            ><td data-label="Name">{team.nickname}</td>
-            <td data-label="Scout Power" class="strong">{fmt(team.scoutPower)}</td>
-            <td data-label="Human Rank">{team.humanRank ?? '—'}</td>
-            <td data-label="Win Rate">{fmtPercent(team.humanWinRate)}</td>
-            <td data-label="Review"
-              >{#if team.reviewFlag}<span class="review-badge"
-                  ><AlertTriangle size={13} /> Review ({team.consensusSummary.reviewCount})</span
-                >{:else}—{/if}</td
+    <section class="match-ranking-link">
+      <div>
+        <h2><ListOrdered size={18} /> Match ranking evidence</h2>
+        <p>
+          {matchRankings.length} shared match ranking{matchRankings.length === 1 ? '' : 's'} currently inform Human Rank.
+        </p>
+      </div>
+      <a class="btn btn-outline btn-sm" href="/matchrankings">Rank a match</a>
+    </section>
+
+    <section class="surface-card comparison-card">
+      <h2><Swords size={18} /> Head to Head</h2>
+      <div class="comparison-selectors">
+        <div class="field">
+          <span class="cap">Team A</span><TeamPicker
+            options={teamOptions}
+            bind:value={compareLeftKey}
+            ariaLabel="Team A"
+          />
+        </div>
+        <span>VS</span>
+        <div class="field">
+          <span class="cap">Team B</span><TeamPicker
+            options={teamOptions}
+            bind:value={compareRightKey}
+            ariaLabel="Team B"
+          />
+        </div>
+      </div>
+      {#if compareLeft && compareRight}
+        <RobotStarPlot left={compareLeft} right={compareRight} />
+        <div class="preference-panel">
+          <div>
+            <h3><Vote size={16} /> Scout preference</h3>
+            {#if compareLeftKey === compareRightKey}
+              <p>Choose two different teams to compare and vote.</p>
+            {:else if selectedPair.voteCount}
+              <p>
+                {selectedPair.voteCount} scout vote{selectedPair.voteCount === 1 ? '' : 's'} · Team {compareLeft.team_number}:
+                {fmtPercent(selectedPair.firstShare)} · Team {compareRight.team_number}: {fmtPercent(
+                  selectedPair.secondShare
+                )}
+              </p>
+            {:else if !pairwiseVotingAvailable}
+              <p>Human comparison voting will be available after the scouting consensus data migration is applied.</p>
+            {:else}
+              <p>No preference votes for this matchup yet.</p>
+            {/if}
+          </div>
+          <div class="vote-buttons">
+            <button
+              class="btn btn-sm"
+              class:vote-leader={selectedPair.leaderKey === compareLeftKey}
+              disabled={!pairwiseVotingAvailable || voteSaving || compareLeftKey === compareRightKey}
+              on:click={() => savePairwiseVote(compareLeftKey)}>Prefer #{compareLeft.team_number}</button
             >
-            <td data-label="Official Rank" class="reference">{officialRank(team) ?? '—'}</td>
-            <td data-label="TBA OPR" class="reference">{fmt(officialOpr(team))}</td>
-            <td data-label="Data Matches">{team.scoutSummary.matchesScouted}</td><td data-label="Match Reports"
-              >{team.matchScoutSummary.reportCount}</td
-            ><td data-label="Auto Score">{fmt(team.matchScoutSummary.avgAutoPoints)}</td><td data-label="Teleop Score"
-              >{fmt(team.matchScoutSummary.avgBallsScored)}</td
-            ><td data-label="Driver">{fmt(team.matchScoutSummary.avgDriverSkill)}</td><td data-label="Reliability"
-              >{fmt(team.matchScoutSummary.ratingAverages.Reliability)}</td
-            ><td data-label="Pit Score">{fmt(team.pitSummary.pitScore)}</td><td data-label="Pit Reliability"
-              >{team.pitSummary.rawReliability ?? '—'}</td
-            ><td data-label="Problems">{team.pitSummary.openProblemCount}</td><td data-label="Archetype"
-              >{team.pitSummary.robotArchetype || '—'}</td
-            ><td data-label="Note Impact">{team.noteSummary.averageImpact ?? '—'}</td><td data-label="Notes"
-              >{team.noteSummary.noteCount}</td
+            <button
+              class="btn btn-sm"
+              class:vote-leader={selectedPair.leaderKey === compareRightKey}
+              disabled={!pairwiseVotingAvailable || voteSaving || compareLeftKey === compareRightKey}
+              on:click={() => savePairwiseVote(compareRightKey)}>Prefer #{compareRight.team_number}</button
             >
-          </tr>{/each}</tbody
-      >
-    </table>
-  </div>
-  <p class="col-notes">
-    <b>Review (n)</b> scouts strongly disagreed n times · <b>Official Rank</b> official FRC qualification rank from The
-    Blue Alliance · <b>TBA OPR</b> The Blue Alliance's Offensive Power Rating, a statistical estimate, not a rank
-  </p>
+          </div>
+        </div>
+        {#if voteMessage}<p class="vote-message" aria-live="polite">{voteMessage}</p>{/if}
+        <div class="comparison-grid">
+          <strong>#{compareLeft.team_number}</strong><span>Metric</span><strong>#{compareRight.team_number}</strong>
+          <b>{fmt(compareLeft.matchScoutSummary.avgAutoPoints)}</b><span>Auto score</span><b
+            >{fmt(compareRight.matchScoutSummary.avgAutoPoints)}</b
+          >
+          <b>{fmt(compareLeft.matchScoutSummary.avgBallsScored)}</b><span>Teleop score</span><b
+            >{fmt(compareRight.matchScoutSummary.avgBallsScored)}</b
+          >
+          <b>{compareLeft.powerRank ?? '—'}</b><span>Scout power rank (ours)</span><b>{compareRight.powerRank ?? '—'}</b
+          >
+          <b>{fmt(compareLeft.scoutPower)}</b><span>Scout power (ours)</span><b>{fmt(compareRight.scoutPower)}</b>
+          <b>{compareLeft.humanRank ?? '—'}</b><span>Human consensus rank</span><b>{compareRight.humanRank ?? '—'}</b>
+          <b>{fmtPercent(compareLeft.humanWinRate)}</b><span>Human preference win rate</span><b
+            >{fmtPercent(compareRight.humanWinRate)}</b
+          >
+          <b>{compareLeft.humanVoteCount}</b><span>Human comparisons</span><b>{compareRight.humanVoteCount}</b>
+          <b class:review={compareLeft.reviewFlag}>{compareLeft.reviewFlag ? 'Review' : '—'}</b><span
+            >Power/consensus disagreement</span
+          ><b class:review={compareRight.reviewFlag}>{compareRight.reviewFlag ? 'Review' : '—'}</b>
+          <b>{officialRank(compareLeft) ?? '—'}</b><span>Official event rank</span><b
+            >{officialRank(compareRight) ?? '—'}</b
+          >
+          <b>{fmt(officialOpr(compareLeft))}</b><span>TBA OPR</span><b>{fmt(officialOpr(compareRight))}</b>
+          <b>{compareLeft.noteSummary.averageImpact ?? '—'}</b><span>Note impact</span><b
+            >{compareRight.noteSummary.averageImpact ?? '—'}</b
+          >
+          <b>{compareLeft.noteSummary.noteCount}</b><span>Saved notes</span><b>{compareRight.noteSummary.noteCount}</b>
+          <b>{fmt(compareLeft.pitSummary.pitScore)}</b><span>Pit score</span><b
+            >{fmt(compareRight.pitSummary.pitScore)}</b
+          >
+          <b>{compareLeft.pitSummary.rawReliability ?? '—'}</b><span>Pit reliability (1-10)</span><b
+            >{compareRight.pitSummary.rawReliability ?? '—'}</b
+          >
+          <b>{compareLeft.pitSummary.robotArchetype || '—'}</b><span>Archetype</span><b
+            >{compareRight.pitSummary.robotArchetype || '—'}</b
+          >
+          <b>{compareLeft.pitSummary.openProblemCount}</b><span>Open pit problems</span><b
+            >{compareRight.pitSummary.openProblemCount}</b
+          >
+          <b>{compareLeft.scoutSummary.matchesScouted}</b><span>Matches scouted</span><b
+            >{compareRight.scoutSummary.matchesScouted}</b
+          >
+          <b>{compareLeft.matchScoutSummary.reportCount}</b><span>Match reports</span><b
+            >{compareRight.matchScoutSummary.reportCount}</b
+          >
+          <b>{fmt(compareLeft.matchScoutSummary.avgDriverSkill)}</b><span>Driver skill</span><b
+            >{fmt(compareRight.matchScoutSummary.avgDriverSkill)}</b
+          >
+          <b>{fmt(compareLeft.matchScoutSummary.ratingAverages.Reliability)}</b><span>Reliability (match reports)</span
+          ><b>{fmt(compareRight.matchScoutSummary.ratingAverages.Reliability)}</b>
+        </div>
+      {/if}
+    </section>
+
+    {#if compareLeft || compareRight}
+      <section class="ranking-reports">
+        <h2>Match scouting evidence</h2>
+        <div class="ranking-report-grid">
+          {#each [compareLeft, compareRight].filter(Boolean) as team (team.key)}
+            <div>
+              <h3>Team {team.team_number}</h3>
+              {#if team.matchScoutEntries.length}
+                {#each team.matchScoutEntries as report (report.id)}
+                  <MatchScoutReport {report} />
+                {/each}
+              {:else}<p class="text-muted">No match scouting reports yet.</p>{/if}
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    <div class="search">
+      <Search size={16} /><input class="form-input" placeholder="Filter teams..." bind:value={search} />
+    </div>
+    <div class="bom-table-container">
+      <table class="bom-table">
+        <thead
+          ><tr>
+            <th><button on:click={() => sortBy('powerRank')}># <ArrowUpDown size={11} /></button></th>
+            <th><button on:click={() => sortBy('team_number')}>Team <ArrowUpDown size={11} /></button></th>
+            <th>Name</th><th
+              ><button on:click={() => sortBy('scoutPower')}>Scout Power <ArrowUpDown size={11} /></button></th
+            >
+            <th><button on:click={() => sortBy('humanRank')}>Human Rank <ArrowUpDown size={11} /></button></th>
+            <th><button on:click={() => sortBy('humanWinRate')}>Win Rate <ArrowUpDown size={11} /></button></th>
+            <th>Review</th>
+            <th class="reference">Official Rank</th>
+            <th class="reference">TBA OPR</th>
+            <th>Data Matches</th><th>Match Reports</th><th>Auto Score</th><th>Teleop Score</th><th>Driver</th><th
+              >Reliability</th
+            ><th>Pit Score</th><th>Pit Reliability</th><th>Problems</th><th>Archetype</th><th>Note Impact</th><th
+              >Notes</th
+            >
+          </tr></thead
+        >
+        <tbody
+          >{#each filteredTeams as team (team.key)}<tr>
+              <td data-label="#" class="strong">{team.powerRank ?? '—'}</td><td data-label="Team" class="mono"
+                >{team.team_number}</td
+              ><td data-label="Name">{team.nickname}</td>
+              <td data-label="Scout Power" class="strong">{fmt(team.scoutPower)}</td>
+              <td data-label="Human Rank">{team.humanRank ?? '—'}</td>
+              <td data-label="Win Rate">{fmtPercent(team.humanWinRate)}</td>
+              <td data-label="Review"
+                >{#if team.reviewFlag}<span class="review-badge"
+                    ><AlertTriangle size={13} /> Review ({team.consensusSummary.reviewCount})</span
+                  >{:else}—{/if}</td
+              >
+              <td data-label="Official Rank" class="reference">{officialRank(team) ?? '—'}</td>
+              <td data-label="TBA OPR" class="reference">{fmt(officialOpr(team))}</td>
+              <td data-label="Data Matches">{team.scoutSummary.matchesScouted}</td><td data-label="Match Reports"
+                >{team.matchScoutSummary.reportCount}</td
+              ><td data-label="Auto Score">{fmt(team.matchScoutSummary.avgAutoPoints)}</td><td data-label="Teleop Score"
+                >{fmt(team.matchScoutSummary.avgBallsScored)}</td
+              ><td data-label="Driver">{fmt(team.matchScoutSummary.avgDriverSkill)}</td><td data-label="Reliability"
+                >{fmt(team.matchScoutSummary.ratingAverages.Reliability)}</td
+              ><td data-label="Pit Score">{fmt(team.pitSummary.pitScore)}</td><td data-label="Pit Reliability"
+                >{team.pitSummary.rawReliability ?? '—'}</td
+              ><td data-label="Problems">{team.pitSummary.openProblemCount}</td><td data-label="Archetype"
+                >{team.pitSummary.robotArchetype || '—'}</td
+              ><td data-label="Note Impact">{team.noteSummary.averageImpact ?? '—'}</td><td data-label="Notes"
+                >{team.noteSummary.noteCount}</td
+              >
+            </tr>{/each}</tbody
+        >
+      </table>
+    </div>
+    <p class="col-notes">
+      <b>Review (n)</b> scouts strongly disagreed n times · <b>Official Rank</b> official FRC qualification rank from
+      The Blue Alliance · <b>TBA OPR</b> The Blue Alliance's Offensive Power Rating, a statistical estimate, not a rank
+    </p>
+  {/if}
 {/if}
 
 <style>
+  .pr-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .pr-views {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+  }
+  .pr-views button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    padding: 0 0.85rem;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .pr-views button.on {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
+  }
   .scout-rankings {
     display: grid;
     gap: var(--space-3);
@@ -843,22 +864,32 @@
   .reference {
     color: var(--text-muted);
   }
+  /* Information: one card per measure, two across when there is room. */
   .measure-key {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: var(--gap-4);
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: var(--space-3);
     margin: var(--space-4) 0;
   }
+  .measure-key > div {
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+  }
   .measure-key h3 {
-    margin: 0 0 var(--space-1);
-    font-size: 0.82rem;
+    margin: 0 0 var(--space-2);
+    font-size: 0.75rem;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
   }
   .measure-key p {
     margin: 0;
-    color: var(--text-muted);
-    font-size: 0.82rem;
+    color: var(--text);
+    font-size: 0.92rem;
+    line-height: 1.55;
   }
   .search {
     margin: var(--space-4) 0 var(--space-3);
@@ -958,24 +989,6 @@
     }
   }
 
-  .ph-key {
-    margin-bottom: var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--surface-1);
-  }
-  .ph-key summary {
-    min-height: var(--tap-min);
-    display: flex;
-    align-items: center;
-    padding: 0 var(--space-3);
-    color: var(--text-secondary);
-  }
-  .ph-key .measure-key {
-    margin: 0;
-    padding: 0 var(--space-3) var(--space-3);
-    grid-template-columns: 1fr;
-  }
   .col-notes {
     margin: var(--space-2) 0 0;
     color: var(--text-muted);

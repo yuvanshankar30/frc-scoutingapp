@@ -98,3 +98,16 @@ describe('buildPicklistInsights', () => {
     expect(result.byTeam.has('frc2')).toBe(false);
   });
 });
+
+describe('buildPicklistInsights match-ranking consensus', () => {
+  it('shows each team its place in the match-ranking consensus, null when never ranked', () => {
+    const { byTeam } = buildPicklistInsights({
+      powerRankings: [
+        { key: 'frc1', scoutPower: 50, powerRank: 1, humanRank: 2, humanVoteCount: 3 },
+        { key: 'frc2', scoutPower: 40, powerRank: 2, humanRank: null, humanVoteCount: 0 }
+      ]
+    });
+    expect(byTeam.get('frc1')).toMatchObject({ matchRank: 2, matchRankVotes: 3 });
+    expect(byTeam.get('frc2')).toMatchObject({ matchRank: null, matchRankVotes: 0 });
+  });
+});

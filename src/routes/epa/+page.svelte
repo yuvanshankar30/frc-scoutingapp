@@ -17,7 +17,7 @@
   import { getAuthHeader } from '$lib/app/supabase.js';
 
   // EPA from raw TBA match scores, anchored to our own match scouting
-  // (#171): each team's rating is fitted over every played match and pulled
+  //: each team's rating is fitted over every played match and pulled
   // toward what the scouts saw (see src/lib/matches/epaModel.js and
   // docs/analysis/epa.md). Without scouting access it falls back to scores
   // alone. Uses only existing /api routes.
@@ -266,7 +266,7 @@
       {#if !rankingRows.length}
         <div class="empty-state">No OPR/ranking data published yet for {resolvedEventKey}.</div>
       {:else if $isPhone}
-        <!-- Phone (#124): one dense row per team instead of a card per row. -->
+        <!-- Phone: one dense row per team instead of a card per row. -->
         <ol class="ph-epa">
           {#each rankingRows as row, index}
             <li>
@@ -828,7 +828,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   @media (max-width: 900px) {
     .epa-page .page-header {
       display: grid;
@@ -951,7 +951,7 @@
     color: var(--text-muted);
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .ph-team small {
       white-space: normal;

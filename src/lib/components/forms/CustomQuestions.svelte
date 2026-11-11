@@ -1,7 +1,7 @@
 <script>
   import { Check, Minus, Plus } from 'lucide-svelte';
   import Select from '$lib/components/common/Select.svelte';
-  import { LIMITS } from '$lib/scouting/forms/formSchema.js';
+  import { CARD_SIZES, LIMITS, TEXT_SIZES, shownOnKind, styleOf } from '$lib/scouting/forms/formSchema.js';
 
   // Renders the questions an admin added to a form, exactly as a scout answers them. The scouting
   // pages and the editor's live preview both use it, so what the admin sees is what the scout gets.
@@ -12,6 +12,32 @@
   export let showMissing = false;
   // Position of each question among the built-in ones (question id to order), when the page lays them out together.
   export let orders = null;
+  // The kind of match scouting on screen (data, performance, robot); questions limited to other kinds are left out.
+  export let kind = '';
+
+  $: shown = questions.filter((question) => shownOnKind(question, kind));
+
+  // A card's look from its style: width in the 12-column grid, text scale, accent color.
+  function cardStyle(question) {
+    const style = styleOf(question);
+    const span = CARD_SIZES.find((size) => size.key === style.size)?.span;
+    const scale = TEXT_SIZES.find((size) => size.key === style.textSize)?.scale ?? 1;
+    return [
+      orders ? `order:${orders.get(question.id) ?? 0}` : '',
+      span ? `--span:${span}` : '',
+      `--cq-scale:${scale}`,
+      style.accent ? `--cq-accent:${style.accent}` : ''
+    ]
+      .filter(Boolean)
+      .join(';');
+  }
+  const setGrid = (question, rowId, optionId) => {
+    const current = answers[question.id] && typeof answers[question.id] === 'object' ? answers[question.id] : {};
+    const next = { ...current };
+    if (next[rowId] === optionId) delete next[rowId];
+    else next[rowId] = optionId;
+    Object.keys(next).length ? set(question.id, next) : clear(question.id);
+  };
 
   const set = (id, value) => {
     if (!disabled) answers = { ...answers, [id]: value };
@@ -41,11 +67,13 @@
       (Array.isArray(answers[question.id]) && !answers[question.id].length));
 </script>
 
-{#each questions as question (question.id)}
+{#each shown as question (question.id)}
+  {@const look = styleOf(question)}
   <section
+    data-design-id={question.id}
     class="cq"
     class:missing={missing(question)}
-    style={orders ? `order:${orders.get(question.id) ?? 0}` : undefined}
+    style={cardStyle(question)}
     aria-labelledby={`cq-${question.id}`}
   >
     <header class="cq-head">
@@ -53,6 +81,7 @@
       <span class="cq-tag" class:req={question.required}>{question.required ? 'Required' : 'Optional'}</span>
     </header>
     {#if question.help}<p class="cq-help">{question.help}</p>{/if}
+    {#if look.image}<img class="cq-img" src={look.image} alt="" loading="lazy" />{/if}
 
     {#if question.type === 'buttons'}
       <div class="cq-buttons" role="group" aria-labelledby={`cq-${question.id}`}>
@@ -62,10 +91,68 @@
             class="cq-btn"
             class:chosen={answers[question.id] === option.id}
             aria-pressed={answers[question.id] === option.id}
+            style={option.color ? `--opt:${option.color}` : undefined}
             {disabled}
             on:click={() => toggle(question.id, option.id)}>{option.label}</button
           >
         {/each}
+      </div>
+    {:else if question.type === 'picture'}
+      <div class="cq-pictures" role="radiogroup" aria-labelledby={`cq-${question.id}`}>
+        {#each question.options as option (option.id)}
+          <button
+            type="button"
+            role="radio"
+            class="cq-pic"
+            class:chosen={answers[question.id] === option.id}
+            aria-checked={answers[question.id] === option.id}
+            style={option.color ? `--opt:${option.color}` : undefined}
+            {disabled}
+            on:click={() => toggle(question.id, option.id)}
+          >
+            {#if option.image}<img src={option.image} alt="" loading="lazy" />{:else}<span class="cq-pic-empty"
+              ></span>{/if}
+            <span>{option.label}</span>
+          </button>
+        {/each}
+      </div>
+    {:else if question.type === 'grid'}
+      <div class="cq-grid" style={`--cols:${question.options.length}`} role="group" aria-labelledby={`cq-${question.id}`}>
+        <span></span>
+        {#each question.options as option (option.id)}<span class="cq-grid-head">{option.label}</span>{/each}
+        {#each question.rows || [] as row (row.id)}
+          <span class="cq-grid-row">{row.label}</span>
+          {#each question.options as option (option.id)}
+            {@const on = answers[question.id]?.[row.id] === option.id}
+            <button
+              type="button"
+              class="cq-btn cq-grid-cell"
+              class:chosen={on}
+              aria-pressed={on}
+              aria-label={`${row.label}: ${option.label}`}
+              style={option.color ? `--opt:${option.color}` : undefined}
+              {disabled}
+              on:click={() => setGrid(question, row.id, option.id)}>{option.label}</button
+            >
+          {/each}
+        {/each}
+      </div>
+    {:else if question.type === 'slider'}
+      <div class="cq-slider">
+        <output class="cq-count" class:unset={answers[question.id] === undefined}
+          >{answers[question.id] ?? '—'}</output
+        >
+        <input
+          type="range"
+          min={question.min}
+          max={question.max}
+          step={question.step || 1}
+          value={answers[question.id] ?? question.min}
+          {disabled}
+          aria-labelledby={`cq-${question.id}`}
+          on:input={(event) => set(question.id, Number(event.currentTarget.value))}
+        />
+        <div class="cq-slider-ends"><span>{question.min}</span><span>{question.max}</span></div>
       </div>
     {:else if question.type === 'mcq'}
       <div class="cq-list" role="radiogroup" aria-labelledby={`cq-${question.id}`}>
@@ -214,8 +301,85 @@
     margin-top: var(--space-4);
     padding: var(--space-4);
     border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-2);
     min-width: 0;
+    font-size: calc(1rem * var(--cq-scale, 1));
+  }
+  .cq-img {
+    width: 100%;
+    max-height: 14rem;
+    object-fit: contain;
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+  }
+  /* An option's own color, when the designer gave it one, wins over the card's accent. */
+  .cq-btn.chosen[style*='--opt'],
+  .cq-pic.chosen[style*='--opt'] {
+    border-color: var(--opt);
+    background: color-mix(in srgb, var(--opt) 22%, var(--surface-1));
+  }
+  .cq-pictures {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+    gap: var(--space-2);
+  }
+  .cq-pic {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .cq-pic img,
+  .cq-pic-empty {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+  }
+  .cq-pic.chosen {
+    border-color: var(--cq-accent, var(--accent));
+    background: color-mix(in srgb, var(--cq-accent, var(--accent)) 16%, var(--surface-1));
+  }
+  .cq-grid {
+    display: grid;
+    grid-template-columns: minmax(5rem, auto) repeat(var(--cols), minmax(0, 1fr));
+    gap: var(--space-1);
+    align-items: center;
+  }
+  .cq-grid-head {
+    color: var(--text-muted);
+    font-size: 0.75em;
+    text-align: center;
+  }
+  .cq-grid-row {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+  }
+  .cq-grid-cell {
+    min-height: 2.4rem;
+    padding: 0 var(--space-1);
+    font-size: 0.85em;
+  }
+  .cq-slider {
+    display: grid;
+    gap: var(--space-1);
+  }
+  .cq-slider input {
+    width: 100%;
+    accent-color: var(--cq-accent, var(--accent));
+  }
+  .cq-slider-ends {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-muted);
+    font-size: 0.75em;
   }
   .cq.missing {
     border-color: var(--red-base);
@@ -227,7 +391,7 @@
     gap: var(--space-3);
   }
   .cq-label {
-    font-size: 0.95rem;
+    font-size: 0.95em;
     font-weight: 600;
     color: var(--text);
     overflow-wrap: anywhere;
@@ -243,8 +407,8 @@
     text-transform: uppercase;
   }
   .cq-tag.req {
-    border-color: var(--brand-gold-strong);
-    color: var(--brand-gold-strong);
+    border-color: var(--cq-accent, var(--accent));
+    color: var(--cq-accent, var(--accent));
   }
   .cq-help {
     margin: 0;
@@ -287,11 +451,11 @@
       transform 0.1s ease;
   }
   .cq-btn:hover:not(:disabled) {
-    border-color: var(--brand-gold-strong);
+    border-color: var(--cq-accent, var(--accent));
   }
   .cq-btn.chosen {
-    border-color: var(--brand-gold-strong);
-    background: var(--brand-gold-soft);
+    border-color: var(--cq-accent, var(--accent));
+    background: color-mix(in srgb, var(--cq-accent, var(--accent)) 16%, var(--surface-1));
     color: var(--secondary);
     font-weight: 600;
     transform: translateY(-1px);
@@ -319,11 +483,11 @@
       background-color 0.12s ease;
   }
   .cq-row:hover:not(:disabled) {
-    border-color: var(--brand-gold-strong);
+    border-color: var(--cq-accent, var(--accent));
   }
   .cq-row.chosen {
-    border-color: var(--brand-gold-strong);
-    background: var(--brand-gold-soft);
+    border-color: var(--cq-accent, var(--accent));
+    background: color-mix(in srgb, var(--cq-accent, var(--accent)) 16%, var(--surface-1));
   }
   .cq-dot,
   .cq-box {
@@ -341,12 +505,12 @@
     border-radius: 4px;
   }
   .cq-row.chosen .cq-dot {
-    border-color: var(--brand-gold-strong);
-    background: radial-gradient(circle, var(--brand-gold-strong) 45%, transparent 50%);
+    border-color: var(--cq-accent, var(--accent));
+    background: radial-gradient(circle, var(--cq-accent, var(--accent)) 45%, transparent 50%);
   }
   .cq-row.chosen .cq-box {
-    border-color: var(--brand-gold-strong);
-    background: var(--brand-gold-strong);
+    border-color: var(--cq-accent, var(--accent));
+    background: var(--cq-accent, var(--accent));
     color: var(--surface-1);
   }
 
@@ -367,7 +531,7 @@
     cursor: pointer;
   }
   .cq-step:hover:not(:disabled) {
-    border-color: var(--brand-gold-strong);
+    border-color: var(--cq-accent, var(--accent));
   }
   .cq-step:disabled {
     opacity: 0.4;

@@ -7,7 +7,7 @@ import { notifyDataCleanupPlan } from '$lib/server/integrations/slack_notificati
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' };
 
-// Daily data cleanup check (#125), cron-only with the same token as the other scheduled sweeps. It never deletes:
+// Daily data cleanup check, cron-only with the same token as the other scheduled sweeps. It never deletes:
 // when a storage limit is crossed and something is old enough to clean, it DMs the admins once per plan with a link
 // to Scouting Admin -> Data, where an admin reviews and approves the cleanup.
 async function handleCronCheck({ request }) {

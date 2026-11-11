@@ -15,6 +15,15 @@ describe('normalizeMatchRanking', () => {
     });
   });
 
+  it('keeps B teams (frc4414B) in the order instead of dropping them', () => {
+    const { value, error } = normalizeMatchRanking(
+      { ...base, ranked_team_keys: ['frc4414B', '254', '9084b'] },
+      'scout-1'
+    );
+    expect(error).toBeNull();
+    expect(value.ranked_team_keys).toEqual(['frc4414B', 'frc254', 'frc9084B']);
+  });
+
   it('rejects incomplete, duplicate, and oversized orders', () => {
     expect(normalizeMatchRanking({ ...base, ranked_team_keys: ['254'] }, 'scout-1').error).toMatch(/at least two/i);
     expect(normalizeMatchRanking({ ...base, ranked_team_keys: ['254', '254'] }, 'scout-1').error).toMatch(/only once/i);

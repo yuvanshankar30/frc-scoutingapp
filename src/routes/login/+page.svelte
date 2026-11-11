@@ -115,6 +115,7 @@
       <div>
         {#if teamLine}<span class="eyebrow">{teamLine}</span>{/if}
         <h1 id="login-title">{appName}</h1>
+        {#if $team?.appearance?.tagline}<p class="tagline">{$team.appearance.tagline}</p>{/if}
       </div>
     </div>
 
@@ -227,6 +228,11 @@
 </main>
 
 <style>
+  .tagline {
+    margin: 2px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+  }
   .login {
     min-height: calc(100 * var(--vh));
     display: grid;

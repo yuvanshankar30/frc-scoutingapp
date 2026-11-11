@@ -5,7 +5,8 @@
 // the CSV.
 
 import { compareMatchKeys, matchLabel } from '$lib/matches/matchKeys.js';
-import { ACCURACY_LABELS, BPS_LABELS } from '$lib/scouting/matchScouting.js';
+import { ACCURACY_LABELS, BPS_LABELS, MATCH_SHIFTS } from '$lib/scouting/matchScouting.js';
+import { defenseSummary } from '$lib/scouting/defenseStats.js';
 import { formatLocal } from '$lib/app/timezone.js';
 import { csvCell } from './scoutingCsvExport.js';
 import { buildXlsx } from '../xlsx.js';
@@ -49,6 +50,11 @@ const described = (value) => {
   if (typeof value === 'object')
     return (
       Object.entries(value)
+        // Lists of plain answers (preferred roles, motor types) are kept; nested objects are not.
+        .map(([key, item]) => [
+          key,
+          Array.isArray(item) && item.every((entry) => typeof entry !== 'object') ? list(item) : item
+        ])
         .filter(([, item]) => present(item) && typeof item !== 'object')
         .map(([key, item]) => `${words(key)}: ${item === true ? 'Yes' : item === false ? 'No' : item}`)
         .join('; ') || null
@@ -59,6 +65,15 @@ const described = (value) => {
 const STATUS = { active: 'Active', dead: 'Dead', stopped: 'Stopped', brownout: 'Brownout', unknown: 'Unknown' };
 const AUTO_RAN = { ran: 'Ran', 'did-not-run': "Didn't run", true: 'Ran', false: "Didn't run" };
 const CARD = { '': 'None', none: 'None', yellow: 'Yellow', red: 'Red' };
+const DEFENSE_PERIOD_NAMES = { active: 'Hub active', inactive: 'Hub inactive' };
+const SHIFT_NAMES = Object.fromEntries(MATCH_SHIFTS.map((shift) => [shift.key, shift.label]));
+// "Shift 1: Active; Shift 2: Dead; ..." in shift order.
+const shiftStatuses = (value) =>
+  value && typeof value === 'object'
+    ? MATCH_SHIFTS.filter((shift) => value[shift.key])
+        .map((shift) => `${shift.label}: ${STATUS[value[shift.key]] ?? words(value[shift.key])}`)
+        .join('; ') || null
+    : null;
 const KIND_NAMES = { data: 'Data scouting', performance: 'Performance scouting', robot: 'Robot scouting' };
 
 // Column groups: the heading over each block of columns and its color in the Excel file.
@@ -102,6 +117,27 @@ const COLUMNS = [
     width: 18,
     get: (r) => list(r.teleop_roles) ?? (r.teleop_roles_none ? 'None seen' : null)
   },
+  {
+    group: 'data',
+    header: 'Defended against',
+    width: 16,
+    get: (r) => (r.defense?.targets?.length ? r.defense.targets.map(team).join(', ') : null)
+  },
+  {
+    group: 'data',
+    header: 'Defended while',
+    width: 16,
+    get: (r) =>
+      r.defense?.periods?.length ? r.defense.periods.map((p) => DEFENSE_PERIOD_NAMES[p] ?? words(p)).join(', ') : null
+  },
+  {
+    group: 'data',
+    header: 'Defense shifts',
+    width: 18,
+    get: (r) =>
+      r.defense?.shifts?.length ? r.defense.shifts.map((key) => SHIFT_NAMES[key] ?? words(key)).join(', ') : null
+  },
+  { group: 'data', header: 'Defense effectiveness (1-10)', width: 12, get: (r) => rating(r.defense?.effectiveness) },
   { group: 'data', header: 'Shuttled', width: 9, get: (r) => yesNo(r.shuttled) },
   { group: 'data', header: 'Balls shuttled (as entered)', width: 12, get: (r) => text(r.shuttle_band) },
   { group: 'data', header: 'Balls shuttled (estimate)', width: 12, get: (r) => number(r.shuttle_average) },
@@ -116,6 +152,7 @@ const COLUMNS = [
     width: 13,
     get: (r) => band(ACCURACY_LABELS, r.ratings?.['Shot accuracy'])
   },
+  { group: 'performance', header: 'Balls per second (slider)', width: 10, get: (r) => number(r.bps) },
   { group: 'performance', header: 'BPS (1-5)', width: 9, get: (r) => rating(r.ratings?.BPS) },
   { group: 'performance', header: 'BPS means', width: 12, get: (r) => band(BPS_LABELS, r.ratings?.BPS) },
   {
@@ -157,6 +194,14 @@ const COLUMNS = [
     get: (r) => STATUS[r.teleop_robot_status] ?? words(r.teleop_robot_status),
     flag: (value) => ['Dead', 'Stopped', 'Brownout'].includes(value)
   },
+  {
+    group: 'robot',
+    header: 'Robot status by shift',
+    width: 30,
+    wrap: true,
+    get: (r) => shiftStatuses(r.robot_status_shifts),
+    flag: (value) => /Dead|Stopped/.test(value || '')
+  },
   { group: 'robot', header: 'Big crash', width: 9, get: (r) => yesNo(r.significant_crash), flag: (v) => v === 'Yes' },
   { group: 'robot', header: 'Crashed into', width: 13, get: (r) => words(r.crash_target) },
   { group: 'robot', header: 'Crash details', width: 30, wrap: true, get: (r) => text(r.crash_details) },
@@ -180,6 +225,8 @@ const COLUMNS = [
   },
   { group: 'robot', header: 'Minor fouls', width: 8, get: (r) => number(r.fouls_minor) },
   { group: 'robot', header: 'Major fouls', width: 8, get: (r) => number(r.fouls_major) },
+  { group: 'robot', header: 'Foul nature', width: 18, get: (r) => text(r.foul_nature) },
+  { group: 'robot', header: 'Foul details', width: 30, wrap: true, get: (r) => text(r.foul_details) },
   { group: 'robot', header: 'What broke', width: 30, wrap: true, get: (r) => text(r.break_details) },
   { group: 'robot', header: 'Effect on the match', width: 30, wrap: true, get: (r) => text(r.break_impact) },
   { group: 'robot', header: 'What the team did', width: 30, wrap: true, get: (r) => text(r.break_response) },
@@ -307,8 +354,12 @@ function teamSummary(records) {
     for (const [key, place] of Object.entries(record.power_ranking))
       if (number(place) !== null) teamRow(key).places.push(Number(place));
   }
+  const defense = new Map(
+    defenseSummary(records.filter((record) => record.type === 'data')).map((row) => [row.team_key, row])
+  );
   return [...byTeam.values()]
     .map((row) => {
+      const defenseRow = defense.get(row.key);
       const shown = [...row.data, ...row.performance, ...row.robot].filter((record) => record.robot_present !== false);
       const watched = row.robot.filter((record) => record.robot_present !== false);
       const problemMatches = new Set(
@@ -339,6 +390,11 @@ function teamSummary(records) {
         auto: average(row.data.map((record) => number(record.auto_points_average))),
         accuracy: ratings('Shot accuracy'),
         bps: ratings('BPS'),
+        bpsExact: average(row.performance.map((record) => number(record.bps))),
+        defensePlayed: defenseRow?.playedRating ?? null,
+        defenseImpact: defenseRow?.impact ?? null,
+        defenseResistance: defenseRow?.resistance ?? null,
+        keptWhenDefended: defenseRow?.keptShare ?? null,
         driver: average(row.performance.map((record) => rating(record.driver_skill))),
         defense: average(row.performance.map((record) => rating(record.defense_rating ?? record.ratings?.Defense))),
         powerPlace: average(row.places),
@@ -482,8 +538,13 @@ const TEAM_COLUMNS = [
   { header: 'Avg auto points', width: 10, get: (t) => t.auto, kind: 'decimal' },
   { header: 'Avg shot accuracy (1-5)', width: 12, get: (t) => t.accuracy, kind: 'rating' },
   { header: 'Avg BPS (1-5)', width: 10, get: (t) => t.bps, kind: 'rating' },
+  { header: 'Avg balls per second (slider)', width: 11, get: (t) => t.bpsExact, kind: 'decimal' },
   { header: 'Avg driver skill (1-5)', width: 11, get: (t) => t.driver, kind: 'rating' },
   { header: 'Avg defense (1-5)', width: 10, get: (t) => t.defense, kind: 'rating' },
+  { header: 'Defense played: avg effectiveness (1-10)', width: 13, get: (t) => t.defensePlayed, kind: 'decimal' },
+  { header: 'Defense impact: % less its targets scored', width: 13, get: (t) => t.defenseImpact, kind: 'decimal' },
+  { header: 'Defense resistance (0-10)', width: 12, get: (t) => t.defenseResistance, kind: 'decimal' },
+  { header: '% of usual scoring kept when defended', width: 13, get: (t) => t.keptWhenDefended, kind: 'decimal' },
   { header: 'Avg power rank place (1 = best)', width: 13, get: (t) => t.powerPlace, kind: 'decimal' },
   { header: 'Matches with a problem', width: 11, get: (t) => (t.watched ? t.problems : null), kind: 'problem' },
   { header: 'Matches Robot scouts watched', width: 12, get: (t) => t.watched || null },
@@ -596,6 +657,10 @@ export function exportTableToXlsx(table, { eventKey = '', exportedAt = new Date(
         ['(as entered)', 'What the scout typed or picked, e.g. a range like 40-60.'],
         ['(estimate)', 'The number used for averages: the middle of a range, or the lower bound of "100+".'],
         ['Ratings (1-5)', '1 is worst, 5 is best. The "means" columns translate accuracy and BPS ratings.'],
+        [
+          'Defense (Teams tab)',
+          'Effectiveness is the Data scouts\' 1-10 rating. Impact is how much less the robots it defended scored than in their undefended matches. Resistance is 10 minus the rating of defense played against it; "% kept" is its defended scoring over its undefended scoring.'
+        ],
         ['Blank cell', 'Not asked on that form, or not answered. Never read a blank as 0.'],
         ['Times', 'Local time (the team timezone), when the report was submitted.']
       ].map(([what, how]) => ({ cells: [what, '', how], style: 'plain', cellStyles: { 0: 'label' } }))

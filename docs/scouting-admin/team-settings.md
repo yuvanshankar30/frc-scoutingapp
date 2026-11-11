@@ -23,8 +23,8 @@ npm run admin -- show
 | Logo | The menu, the sign-in page and the installed app icon (PNG, JPEG or WebP, up to 256 KB). Without one, the team number is shown in the brand color |
 | Brand color | Buttons, highlights, the active menu item and accents, in both themes (lighter and darker shades are worked out from it) |
 | Default theme | What new devices and people who haven't picked a theme see. Each person can switch for themselves |
-| Timezone | Match times, deadlines, "today" in exports, Slack reminders |
-| Pages in the menu | Hide optional pages: Pit Crew, Drive Team, Predictions, AI analytics, Blue Alliance, EPA. Hidden pages leave the menu; their addresses still work |
+| Timezone | Match times, "today" in exports, Slack reminders |
+| Pages in the menu | Hide optional pages: Drive Team, AI analytics, Blue Alliance, EPA. Hidden pages leave the menu; their addresses still work |
 | Let people create their own accounts | Shows or hides "Create an account" on the sign-in page (see [sign-in](../app/sign-in.md#creating-an-account)) |
 
 Changes take effect for everyone the next time they load the site (the server caches settings for 30 seconds).
@@ -35,3 +35,28 @@ Changes take effect for everyone the next time they load the site (the server ca
 `src/routes/api/team-settings/+server.js` (saving and the logo upload to the `branding` bucket),
 `src/lib/app/teamSettings.js` (validation and brand colors), `src/lib/server/teamSettings.js` (reading and caching),
 table `app_settings`.
+
+## Appearance
+
+Team settings > Appearance sets the look beyond the brand color, with a live preview at the top of the section.
+Everything is stored in `app_settings.appearance` (one JSON object) and checked in `src/lib/app/appearance.js`, which
+also turns it into the CSS variables the page head carries for both themes.
+
+| Setting | Choices |
+| --- | --- |
+| Palette | Ink and cream, Graphite, Midnight, Forest, Plum, Ember: page and card colors for dark and light |
+| Secondary color | Optional: the serif word in the app name and the background glow (the brand color when empty) |
+| Highlight color | Optional: the second series in charts (the secondary color when empty) |
+| Dark / light background | Optional, per theme: the page background; cards, borders and text colors are built from it |
+| Font | Space Grotesk, Inter, Barlow (condensed headings), serif headings, system |
+| Corners | Round, soft, square |
+| Badge | Shape (rounded square, circle, square), style (ink, outline, filled) and text (up to 4 characters, the team number by default); shown when there is no logo |
+| Tagline | Up to 80 characters, under the app name on the sign-in page |
+| Switches | Serif accent in the app name; background glow |
+
+Every color field opens a picker with a color wheel, a brightness slider, R / G / B and hex fields, and quick picks
+(`src/lib/components/common/ColorPicker.svelte`). The page shows each change as you make it; nothing is saved until
+**Save settings**.
+
+**Default theme** is what everyone sees until they switch theme themselves (the sun / moon button). Picking it here
+shows it straight away; **Use it for me too** drops your own choice so the team default applies to you as well.

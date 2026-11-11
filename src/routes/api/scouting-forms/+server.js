@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { decodeLogo } from '$lib/server/teamSettings.js';
 import { actorFor } from '$lib/server/scouting/scoutingAccess.js';
 import { FORM_TYPES, emptyForm, formProblems, sanitizeForm } from '$lib/scouting/forms/formSchema.js';
 
@@ -25,10 +26,13 @@ const publicVersion = (row) =>
     ? { version: row.version, schema: sanitizeForm(row.schema, row.form_type), published_at: row.published_at }
     : { version: 0, schema: emptyForm(), published_at: null };
 
+const IMAGE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+
 export async function GET({ url, request }) {
   const form = formOf(url.searchParams.get('form'));
   if (!form) return json({ error: 'form must be match or pit' }, { status: 400 });
-  const { actorId, canAdminister, db } = await actorFor(request);
+  const { actorId, can, db } = await actorFor(request);
+  const canAdminister = can('EDIT_FORMS');
   if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
 
   if (url.searchParams.get('admin') !== '1') {
@@ -102,10 +106,22 @@ export async function POST({ request }) {
     const body = await request.json();
     const form = formOf(body?.form);
     if (!form) return json({ error: 'form must be match or pit' }, { status: 400 });
-    const { actorId, canAdminister, db } = await actorFor(request);
+    const { actorId, can, db } = await actorFor(request);
+    const canAdminister = can('EDIT_FORMS');
     if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
     if (!canAdminister) return json({ error: 'Forbidden' }, { status: 403 });
     const action = String(body?.action || '');
+
+    // A picture for a question or an option (Edit > the designer). Stored with the team's other uploaded images; the
+    // form only keeps its public address.
+    if (action === 'upload-image') {
+      const image = decodeLogo(body?.dataUrl);
+      if (image.error) return json({ error: image.error.replace('logo', 'picture') }, { status: 400 });
+      const path = `forms/${form}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${IMAGE_TYPES[image.type]}`;
+      const uploaded = await db.storage.from('branding').upload(path, image.bytes, { contentType: image.type });
+      if (uploaded.error) return json({ error: uploaded.error.message }, { status: 500 });
+      return json({ success: true, data: { url: db.storage.from('branding').getPublicUrl(path).data.publicUrl } });
+    }
 
     if (action === 'discard-draft') {
       const { error } = await db.from('scouting_form_drafts').delete().eq('form_type', form);

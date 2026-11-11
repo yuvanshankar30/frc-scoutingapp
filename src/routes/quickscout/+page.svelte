@@ -873,7 +873,7 @@
     margin-top: var(--space-3, 0.75rem);
   }
 
-  /* Phone layout (#124): the app gutter instead of extra page padding, match controls that fit one
+  /* Phone layout: the app gutter instead of extra page padding, match controls that fit one
      row at 360px, and every button at least a thumb's width. */
   @media (max-width: 640px) {
     .quickscout-page {

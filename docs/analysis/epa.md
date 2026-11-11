@@ -24,7 +24,7 @@ The scouting estimate is converted to points by a line fitted on the alliances p
 roughly constant amount). Early in an event the prior carries the rating; as matches pile up the scores take over.
 Ratings are split into auto, teleop and endgame from TBA's score breakdown.
 
-**Where it's used:** /epa, Strategy (projected scores and win chances), the prediction market's model probabilities,
+**Where it's used:** /epa, Strategy (projected scores and win chances),
 and model votes. All of them read the same scouting the server can see.
 
 **Back-test** (walk-forward: every match predicted only from earlier matches and earlier scouting):

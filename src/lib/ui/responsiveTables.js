@@ -1,4 +1,4 @@
-// Phone layout for data tables, app-wide (#124). On a phone, a table wider than the screen either
+// Phone layout for data tables, app-wide. On a phone, a table wider than the screen either
 // scrolls sideways or squeezes its columns; instead each row becomes a card with every cell
 // labelled by its column heading. This labels the cells (data-label from the <thead>) and marks the
 // table with .rt-cards; the card layout itself is CSS in app.css, so desktop keeps the real table.

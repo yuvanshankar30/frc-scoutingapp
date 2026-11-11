@@ -1,4 +1,0 @@
-# Prettier only formats src/ (the format scripts in package.json and src/lib/docs/formatting.test.js
-# both stop there), so nothing in src/ is skipped. Patterns here are relative to this folder and match
-# at any depth: never add a bare folder name like "docs/", it would also skip src/lib/docs.
-node_modules/

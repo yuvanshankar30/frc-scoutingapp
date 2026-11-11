@@ -147,7 +147,7 @@ export async function POST({ request }) {
   try {
     const access = await requireApprovedUser(request);
     if (!access.ok) return json({ error: access.error }, { status: access.status, headers: NO_STORE_HEADERS });
-    if (!access.canAdminister) return json({ error: 'Forbidden' }, { status: 403, headers: NO_STORE_HEADERS });
+    if (!access.can('MANAGE_EVENT')) return json({ error: 'Forbidden' }, { status: 403, headers: NO_STORE_HEADERS });
 
     const body = await request.json();
     const rawEventKey = String(body?.event_key || '').trim();

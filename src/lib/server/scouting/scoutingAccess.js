@@ -6,8 +6,9 @@
 // - canSeeScoutingRoutes: the full permission model (hasPermission CAN_SEE_ROUTES, which also counts
 //   team roles, roster keys and Competition Lead). Used by the scouting form APIs.
 // Two Scouting Admin rules exist too:
-// - canAdministerFrom (scouting setup, match reports, assignments): an admin, a competition lead,
-//   DATA_SCOUT_ADMIN, anyone who can open the admin panel, or a competition role carrying Scouting Admin.
+// - canAdministerFrom (scouting setup, match reports, assignments): an admin, a competition lead or a competition
+//   role carrying Scouting Admin. Someone whose access comes from a role (Scouting Admin > People > Roles) passes a
+//   specific check instead: canAdministerOr(profile, rosterKeys, 'EDIT_FORMS'), or actorFor's can('EDIT_FORMS').
 // - canManageScoutingAdmin (the /api/scouting-admin dashboard and its actions: users, data reset,
 //   roles): only an admin, a competition lead or a competition role carrying Scouting Admin.
 import { hasScoutingAdmin, holdsScoutingAdminRole, isCompetitionLead } from '$lib/scouting/competitionRoles.js';
@@ -45,14 +46,13 @@ export function canSeeScoutingRoutes(profile, rosterKeys = []) {
 
 export function canAdministerFrom(profile, rosterKeys) {
   if (!profile || profile.banned === true) return false;
-  const permissions = new Set(normalizePerms(profile?.permissions));
-  return (
-    profile?.role === 'admin' ||
-    isCompetitionLead(profile, rosterKeys) ||
-    permissions.has('DATA_SCOUT_ADMIN') ||
-    permissions.has('VIEW_ADMIN_PANEL') ||
-    holdsScoutingAdminRole(rosterKeys)
-  );
+  return profile?.role === 'admin' || isCompetitionLead(profile, rosterKeys) || holdsScoutingAdminRole(rosterKeys);
+}
+
+/** A full scouting admin, or someone whose role carries `permission`. */
+export function canAdministerOr(profile, rosterKeys, permission) {
+  if (!profile || profile.banned === true) return false;
+  return canAdministerFrom(profile, rosterKeys) || normalizePerms(profile.permissions).includes(permission);
 }
 
 /** The /api/scouting-admin rule: an admin, a competition lead, or a competition role carrying Scouting Admin. */
@@ -142,6 +142,7 @@ export async function actorFor(request) {
   );
   const approved = isApprovedProfile(profile);
   const canAdminister = approved && canAdministerFrom(profile, rosterKeys);
+  const can = (permission) => approved && canAdministerOr(profile, rosterKeys, permission);
   return {
     actorId: approved ? rawActorId : null,
     authenticatedUserId: rawActorId,
@@ -150,6 +151,7 @@ export async function actorFor(request) {
     rosterKeys,
     approved,
     canAdminister,
+    can,
     client: authed,
     db: approved ? serviceDb : authed
   };

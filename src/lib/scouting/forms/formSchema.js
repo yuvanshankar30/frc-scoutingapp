@@ -4,183 +4,48 @@
 // Answers are stored by question id; the form version they were answered against is stored with them,
 // so an old report can always be read against the questions it was answered with.
 
-// The built-in questions are grouped into blocks that the editor can reword, reorder and (when nothing
-// depends on them) hide. `optional: false` means the saved report or its analytics need the answer, so the block
-// can be moved and reworded but not hidden. `help: null` means the block has no help text to edit.
-const block = (key, label, { help = null, optional = true, rename = true, note = '' } = {}) => ({
+// The built-in questions are grouped into blocks. Every block can be reworded, restyled, moved, hidden and made
+// required or optional: games change from year to year, so nothing is locked. `optional: false` here only sets the
+// starting point, required; an admin can change it. The one exception is the match, robot and alliance a report is
+// for, which every report needs. Every block's help text can be edited (empty means none is shown).
+const block = (key, label, { help = null, optional = true, note = '' } = {}) => ({
   key,
   label,
   help,
-  optional,
-  rename,
+  required: optional === false,
+  optional: key !== 'prematch.assignment',
+  rename: true,
   note
 });
 
-export const FORM_TYPES = Object.freeze({
-  match: {
-    label: 'Match scouting',
-    sections: [
-      {
-        id: 'prematch',
-        label: 'Pre-match',
-        blocks: [
-          block('prematch.assignment', 'Match, robot and alliance', {
-            optional: false,
-            rename: false,
-            note: 'Scout name, match number, robot number and alliance. Every report needs these.'
-          }),
-          block('prematch.preload', 'Preload', { optional: false, note: 'Whether the robot started with a preload.' }),
-          block('prematch.start', 'Starting position', {
-            optional: false,
-            help: 'Your alliance wall is on the left. Highlights indicate starting lanes, not exact robot locations.',
-            note: 'Which of the five starting lanes the robot used.'
-          })
-        ]
-      },
-      {
-        id: 'auto',
-        label: 'Auto',
-        blocks: [
-          block('auto.ran', 'Did autonomous run?'),
-          block('auto.points', 'Estimated points scored', {
-            help: 'Drag to estimate, or type an exact number, a range such as 40-60, or a lower bound such as 100+. Optional.'
-          }),
-          block('auto.sources', 'Where did the robot collect fuel?', {
-            help: 'Select every location observed during autonomous.'
-          }),
-          block('auto.cycles', 'Autonomous cycles')
-        ]
-      },
-      {
-        id: 'teleop',
-        label: 'Teleop',
-        blocks: [
-          block('teleop.roles', 'Observed roles', {
-            optional: false,
-            help: 'Select every role this robot meaningfully performed.',
-            note: 'Scorer, Defense or Shuttler. Used by Power Rankings.'
-          }),
-          block('teleop.balls', 'Balls scored', {
-            optional: false,
-            help: 'Pick a suggested range from the list or type a number, a range or a lower bound, like 137, 100-150 or 500+.',
-            note: 'The scoring estimate every analytics page uses.'
-          }),
-          block('teleop.notes', 'Real-scout observations')
-        ]
-      },
-      {
-        id: 'shuttling',
-        label: 'Shuttling',
-        blocks: [
-          block('shuttling.shuttled', 'Did the robot shuttle fuel?', {
-            help: 'Shuttling is moving fuel toward your alliance zone without scoring it, by driving it, pushing it or launching it.',
-            note: 'Yes or no; the other shuttling questions appear only for yes.'
-          }),
-          block('shuttling.amount', 'Fuel shuttled', {
-            help: 'Pick a suggested range or type a number, a range or a lower bound, like 30, 25-50 or 100+.'
-          }),
-          block('shuttling.rating', 'Shuttling effectiveness', {
-            help: '1 is poor and 5 is excellent. Leave blank when you could not judge it.'
-          }),
-          block('shuttling.notes', 'Shuttling notes')
-        ]
-      },
-      {
-        id: 'performance',
-        label: 'Performance',
-        blocks: [
-          block('teleop.ratings', 'Performance ratings', {
-            optional: false,
-            help: 'Each number shows the band it stands for. Boundary values belong to the lower band. Clear a rating if you could not judge it.',
-            note: 'Shot accuracy and balls per second.'
-          }),
-          block('teleop.extraRatings', 'Additional ratings', {
-            help: '1 is poor and 5 is excellent. Leave blank when you did not see it.',
-            note: 'Driver awareness, defense and reliability.'
-          }),
-          block('teleop.intake', 'Intake speed', { help: '1 is slow and 3 is fast. Leave blank when not observed.' }),
-          block('performance.driver', 'Driver skill', {
-            help: '1 is poor and 5 is excellent: field awareness, control and decision making.'
-          }),
-          block('performance.offense', 'Offense rating', {
-            help: 'How much the robot helped its alliance score. Leave blank when you did not see it.'
-          }),
-          block('performance.defense', 'Defense rating', {
-            help: 'How well it played defense, or held up against it. Leave blank when it did not happen.'
-          }),
-          block('performance.ranking', 'Power ranking', {
-            help: 'Tap the robots from best to worst in this match. Mark a robot "Didn\'t watch" to leave it out; every scout\'s rankings are averaged per match.',
-            note: 'Averaged across scouts on Power Rankings.'
-          }),
-          block('performance.notes', 'Notes about performance')
-        ]
-      },
-      {
-        id: 'robot',
-        label: 'Robot',
-        blocks: [
-          block('teleop.status', 'Robot status', { optional: false, note: 'Active, dead or stopped.' }),
-          block('teleop.crash', 'Significant crash', {
-            optional: false,
-            note: 'Whether the robot crashed, and into what.'
-          }),
-          block('auto.collision', 'Any collision during auto?'),
-          block('robot.intakeJammed', 'Intake jammed during the match'),
-          block('postmatch.cards', 'Cards'),
-          block('robot.fouls', 'Fouls', {
-            help: 'Count the fouls called on this robot. Leave at — if you could not tell.'
-          }),
-          block('postmatch.break', 'Mechanical break', {
-            optional: false,
-            note: 'Needed to decide whether the pit crew must be told.'
-          }),
-          block('robot.breaks', 'What broke and how the team handled it', {
-            help: "What broke, how it changed the robot's play, and how the team played around it or fixed it."
-          }),
-          block('postmatch.beached', 'Robot became beached'),
-          block('postmatch.problem', 'Send a problem to the pit crew', {
-            note: 'Hides only the optional checkbox. When a robot dies or breaks, the required pit problem report still appears.'
-          })
-        ]
-      },
-      { id: 'postmatch', label: 'Post-match', blocks: [block('postmatch.notes', 'Post-match scout notes')] }
-    ]
-  },
-  pit: {
-    label: 'Pit scouting',
-    sections: [
-      {
-        id: 'main',
-        label: 'Main',
-        blocks: [
-          block('main.shooter', 'Shooter Type'),
-          block('main.hopper', 'Indexer Type'),
-          block('main.archetype', 'Robot Role'),
-          block('main.bps', 'Estimated BPS'),
-          block('main.technical', 'Main technical questions', {
-            rename: false,
-            note: 'Main breaker, CANivore, CAN buses, trench or bump, hopper capacity and similar.'
-          }),
-          block('main.breaking', "What's most likely to break?"),
-          block('main.autopoints', 'How many points do you usually score in auto?'),
-          block('main.notes', 'Anything else?')
-        ]
-      },
-      {
-        id: 'extra',
-        label: 'Extra',
-        blocks: [
-          block('extra.setup', 'Contact & Setup', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.mechanisms', 'Mechanisms', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.electrical', 'Electrical', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.controls', 'Controls', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.structure', 'Structure', { note: 'A whole page of questions in the Extra tab.' }),
-          block('extra.ratings', 'Ratings', { note: 'A whole page of questions in the Extra tab.' })
-        ]
-      }
-    ]
-  }
-});
+// The built-in forms for this season come from JSON files in the repo's scouting-forms/ folder (one folder per
+// game), so a new game is a new folder, not a code change. Each file lists the form's sections and their built-in
+// questions; the designer (Scouting Admin > Edit) changes everything else and can export and import the same format.
+import { arrangeChoices, coreChoiceLists, sanitizeChoices } from './coreChoices.js';
+import matchForm from '$forms/2026-rebuilt/match.json';
+import pitForm from '$forms/2026-rebuilt/pit.json';
+
+/** A form file's definition, in the shape the rest of the app uses. */
+export function formDefinition(file) {
+  return {
+    label: file.label,
+    ...(file.movedSections ? { movedSections: file.movedSections } : {}),
+    sections: file.sections.map((section) => ({
+      id: section.id,
+      label: section.label,
+      blocks: section.blocks.map((entry) =>
+        block(entry.key, entry.label, {
+          help: entry.help ?? '',
+          optional: entry.required ? false : true,
+          note: entry.note || ''
+        })
+      )
+    }))
+  };
+}
+
+export const FORM_FILES = Object.freeze({ match: matchForm, pit: pitForm });
+export const FORM_TYPES = Object.freeze({ match: formDefinition(matchForm), pit: formDefinition(pitForm) });
 
 export const coreId = (key) => `core:${key}`;
 export const coreBlocksIn = (formType, sectionId) =>
@@ -201,8 +66,35 @@ export const QUESTION_TYPES = Object.freeze({
   counter: { label: 'Counter', blurb: 'Tap to count up or down', icon: 'Plus', options: false },
   number: { label: 'Number', blurb: 'Type a number', icon: 'Hash', options: false },
   text: { label: 'Short text', blurb: 'One line of text', icon: 'Type', options: false },
-  frq: { label: 'Free response', blurb: 'A longer written answer', icon: 'AlignLeft', options: false }
+  frq: { label: 'Free response', blurb: 'A longer written answer', icon: 'AlignLeft', options: false },
+  slider: { label: 'Slider', blurb: 'A number picked on a slider', icon: 'SlidersHorizontal', options: false },
+  picture: { label: 'Picture choice', blurb: 'One answer from picture tiles', icon: 'Image', options: true },
+  grid: {
+    label: 'Grid',
+    blurb: 'One answer per row, like robot status in each shift',
+    icon: 'Grid3x3',
+    options: true
+  }
 });
+
+// How a question's card looks. Every question and every built-in block can carry a style; anything left out uses
+// the defaults, so an old form looks exactly as it did.
+export const CARD_SIZES = Object.freeze([
+  { key: 'auto', label: 'Auto', span: null },
+  { key: 'third', label: 'Third', span: 4 },
+  { key: 'half', label: 'Half', span: 6 },
+  { key: 'two-thirds', label: 'Two thirds', span: 8 },
+  { key: 'full', label: 'Full width', span: 12 }
+]);
+export const TEXT_SIZES = Object.freeze([
+  { key: 'sm', label: 'Small', scale: 0.9 },
+  { key: 'md', label: 'Medium', scale: 1 },
+  { key: 'lg', label: 'Large', scale: 1.15 },
+  { key: 'xl', label: 'Extra large', scale: 1.3 }
+]);
+/** The kinds of match scouting a question can appear on (match form only; an empty list means all of them). */
+export const REPORT_KIND_KEYS = Object.freeze(['data', 'performance', 'robot']);
+export const DEFAULT_STYLE = Object.freeze({ size: 'auto', textSize: 'md', accent: '', image: '' });
 
 export const LIMITS = Object.freeze({
   questions: 60,
@@ -211,7 +103,9 @@ export const LIMITS = Object.freeze({
   options: 20,
   optionLabel: 60,
   text: 200,
-  frq: 2000
+  frq: 2000,
+  rows: 12,
+  sliderMax: 100000
 });
 
 const randomId = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -232,6 +126,12 @@ export function createQuestion(type, section) {
   if (type === 'rating') question.max = 5;
   if (type === 'counter') Object.assign(question, { min: 0, max: 50 });
   if (type === 'number') Object.assign(question, { min: null, max: null });
+  if (type === 'slider') Object.assign(question, { min: 0, max: 40, step: 1 });
+  if (type === 'grid')
+    question.rows = [
+      { id: randomId('r'), label: 'Row 1' },
+      { id: randomId('r'), label: 'Row 2' }
+    ];
   return question;
 }
 
@@ -247,6 +147,8 @@ export function convertQuestion(question, type) {
     required: question.required
   };
   if (QUESTION_TYPES[type].options && question.options?.length) converted.options = question.options;
+  if (question.style) converted.style = question.style;
+  if (question.kinds) converted.kinds = question.kinds;
   return converted;
 }
 
@@ -258,21 +160,47 @@ const text = (value, max) =>
     .slice(0, max);
 const intOrNull = (value) =>
   value === '' || value == null || !Number.isFinite(Number(value)) ? null : Math.trunc(Number(value));
+const numOrNull = (value) => (value === '' || value == null || !Number.isFinite(Number(value)) ? null : Number(value));
+const HEX = /^#[0-9a-f]{6}$/i;
+// Images come from the app's own storage (uploaded in the editor) or another https address.
+const imageUrl = (value) => {
+  const url = String(value ?? '').trim();
+  // https anywhere, or plain http from this computer (a local Supabase while developing).
+  const ok = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)[^\s"'<>]+$/i.test(url);
+  return url.length <= 500 && ok ? url : '';
+};
+
+/** A card style with only known keys and valid values; defaults are left out so stored forms stay small. */
+export function sanitizeStyle(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const style = {};
+  if (CARD_SIZES.some((size) => size.key === raw.size) && raw.size !== 'auto') style.size = raw.size;
+  if (TEXT_SIZES.some((size) => size.key === raw.textSize) && raw.textSize !== 'md') style.textSize = raw.textSize;
+  if (HEX.test(String(raw.accent || ''))) style.accent = String(raw.accent).toLowerCase();
+  const image = imageUrl(raw.image);
+  if (image) style.image = image;
+  return Object.keys(style).length ? style : undefined;
+}
+
+/** A question's (or block's) style with every key filled in. */
+export const styleOf = (item) => ({ ...DEFAULT_STYLE, ...(item?.style || {}) });
 
 /** Cleans anything an editor or a client sent into a well-formed form, dropping what is not valid. */
 export function sanitizeForm(raw, formType) {
   const sections = new Set((FORM_TYPES[formType]?.sections || []).map((section) => section.id));
+  const moved = FORM_TYPES[formType]?.movedSections || {};
   const seen = new Set();
   const questions = [];
   for (const item of Array.isArray(raw?.questions) ? raw.questions : []) {
     if (questions.length >= LIMITS.questions) break;
     const meta = QUESTION_TYPES[item?.type];
     const id = text(item?.id, 40);
-    if (!meta || !id || seen.has(id) || !sections.has(item?.section)) continue;
+    const section = moved[item?.section] || item?.section;
+    if (!meta || !id || seen.has(id) || !sections.has(section)) continue;
     seen.add(id);
     const question = {
       id,
-      section: item.section,
+      section,
       type: item.type,
       label: text(item.label, LIMITS.label),
       help: text(item.help, LIMITS.help),
@@ -286,8 +214,35 @@ export function sanitizeForm(raw, formType) {
           let optionId = text(option?.id, 40) || randomId('o');
           if (optionIds.has(optionId)) optionId = randomId('o');
           optionIds.add(optionId);
-          return { id: optionId, label: text(option?.label, LIMITS.optionLabel) || `Option ${index + 1}` };
+          const kept = { id: optionId, label: text(option?.label, LIMITS.optionLabel) || `Option ${index + 1}` };
+          const image = imageUrl(option?.image);
+          if (image) kept.image = image;
+          if (HEX.test(String(option?.color || ''))) kept.color = String(option.color).toLowerCase();
+          return kept;
         });
+    }
+    if (item.type === 'grid') {
+      const rowIds = new Set();
+      question.rows = (Array.isArray(item.rows) ? item.rows : []).slice(0, LIMITS.rows).map((row, index) => {
+        let rowId = text(row?.id, 40) || randomId('r');
+        if (rowIds.has(rowId)) rowId = randomId('r');
+        rowIds.add(rowId);
+        return { id: rowId, label: text(row?.label, LIMITS.optionLabel) || `Row ${index + 1}` };
+      });
+    }
+    if (item.type === 'slider') {
+      const min = numOrNull(item.min) ?? 0;
+      const max = numOrNull(item.max) ?? 10;
+      question.min = Math.max(-LIMITS.sliderMax, Math.min(min, max));
+      question.max = Math.min(LIMITS.sliderMax, Math.max(min, max));
+      const step = numOrNull(item.step);
+      question.step = step && step > 0 ? Math.min(step, question.max - question.min || 1) : 1;
+    }
+    const style = sanitizeStyle(item.style);
+    if (style) question.style = style;
+    if (Array.isArray(item.kinds)) {
+      const kinds = REPORT_KIND_KEYS.filter((kind) => item.kinds.includes(kind));
+      if (kinds.length && kinds.length < REPORT_KIND_KEYS.length) question.kinds = kinds;
     }
     if (item.type === 'rating') question.max = Math.min(10, Math.max(3, intOrNull(item.max) ?? 5));
     if (item.type === 'counter' || item.type === 'number') {
@@ -319,6 +274,10 @@ function sanitizeCore(raw, formType) {
       if (help !== entry.help) kept.help = help;
     }
     if (entry.optional && value.hidden === true) kept.hidden = true;
+    if (typeof value.required === 'boolean' && value.required !== entry.required) kept.required = value.required;
+    const style = sanitizeStyle(value.style);
+    if (style) kept.style = style;
+    Object.assign(kept, sanitizeChoices(value, coreChoiceLists(formType, key)) || {});
     if (Object.keys(kept).length) core[key] = kept;
   }
   return core;
@@ -353,6 +312,9 @@ export function formProblems(form) {
       const labels = question.options.map((option) => option.label.trim().toLowerCase());
       if (new Set(labels).size !== labels.length) add(question.id, 'Two options have the same text.');
     }
+    if (question.type === 'grid' && !question.rows?.length) add(question.id, 'Give the grid at least one row.');
+    if (question.type === 'slider' && question.min >= question.max)
+      add(question.id, 'The slider needs a minimum below its maximum.');
     if (
       (question.type === 'counter' || question.type === 'number') &&
       question.min != null &&
@@ -372,6 +334,11 @@ export function coreView(form, entry) {
     label: override.label ?? entry.label,
     help: override.help ?? entry.help,
     hidden: override.hidden === true,
+    required: override.required ?? entry.required,
+    style: override.style || null,
+    choices: override.choices || {},
+    hiddenChoices: override.hiddenChoices || [],
+    choiceOrder: override.choiceOrder || [],
     renamed: override.label !== undefined,
     helpChanged: override.help !== undefined
   };
@@ -404,7 +371,8 @@ export function createLayout(form, formType) {
   const blocks = new Map(
     (FORM_TYPES[formType]?.sections || []).flatMap((section) => section.blocks).map((entry) => [entry.key, entry])
   );
-  const view = (key) => (blocks.has(key) ? coreView(form, blocks.get(key)) : { label: '', help: null, hidden: false });
+  const view = (key) =>
+    blocks.has(key) ? coreView(form, blocks.get(key)) : { label: '', help: null, hidden: false, required: true };
   return {
     order: (id) => position.get(id) ?? 0,
     label: (key, fallback = '') => view(key).label || fallback,
@@ -413,6 +381,14 @@ export function createLayout(form, formType) {
       return help === undefined || help === null ? fallback : help;
     },
     hidden: (key) => view(key).hidden,
+    // Whether the scout must answer this block: shown, and required in the form (built-in default or the admin's).
+    need: (key) => (blocks.has(key) ? !view(key).hidden && view(key).required !== false : true),
+    shown: (key) => !view(key).hidden,
+    // A built-in block's card style, with defaults filled in.
+    style: (key) => ({ ...DEFAULT_STYLE, ...(view(key).style || {}) }),
+    // The wording of one of a built-in block's answers, and a list of its answers without hidden ones, in order.
+    choice: (key, value, fallback = '') => form?.core?.[key]?.choices?.[value] || fallback,
+    choices: (key, items) => arrangeChoices(form?.core?.[key], items),
     orders: position
   };
 }
@@ -476,6 +452,9 @@ export function describeDiff(diff) {
 export const questionsIn = (form, section) =>
   (form?.questions || []).filter((question) => question.section === section);
 
+/** Whether a question shows on this kind of match scouting (questions with no kinds show on all of them). */
+export const shownOnKind = (question, kind) => !kind || !question.kinds?.length || question.kinds.includes(kind);
+
 /** Cleans a scout's answers to a form's questions: unknown ids and wrong shapes are dropped. */
 export function sanitizeAnswers(form, raw) {
   const answers = {};
@@ -483,7 +462,7 @@ export function sanitizeAnswers(form, raw) {
     const value = raw?.[question.id];
     if (value === undefined || value === null || value === '') continue;
     const optionIds = new Set((question.options || []).map((option) => option.id));
-    if (['buttons', 'mcq', 'dropdown'].includes(question.type)) {
+    if (['buttons', 'mcq', 'dropdown', 'picture'].includes(question.type)) {
       if (optionIds.has(value)) answers[question.id] = value;
     } else if (question.type === 'checkboxes') {
       const picked = (Array.isArray(value) ? value : []).filter((id) => optionIds.has(id));
@@ -499,6 +478,15 @@ export function sanitizeAnswers(form, raw) {
       if (question.min != null && n < question.min) continue;
       if (question.max != null && n > question.max) continue;
       answers[question.id] = question.type === 'counter' ? Math.trunc(n) : n;
+    } else if (question.type === 'slider') {
+      const n = Number(value);
+      if (Number.isFinite(n) && n >= question.min && n <= question.max) answers[question.id] = n;
+    } else if (question.type === 'grid') {
+      const rowIds = new Set((question.rows || []).map((row) => row.id));
+      const picked = {};
+      for (const [rowId, optionId] of Object.entries(value && typeof value === 'object' ? value : {}))
+        if (rowIds.has(rowId) && optionIds.has(optionId)) picked[rowId] = optionId;
+      if (Object.keys(picked).length) answers[question.id] = picked;
     } else if (question.type === 'text') answers[question.id] = text(value, LIMITS.text);
     else if (question.type === 'frq') answers[question.id] = text(value, LIMITS.frq);
   }
@@ -508,6 +496,8 @@ export function sanitizeAnswers(form, raw) {
 export const isAnswered = (question, answers) => {
   const value = answers?.[question.id];
   if (question.type === 'counter') return value !== undefined;
+  if (question.type === 'grid')
+    return (question.rows || []).every((row) => value && typeof value === 'object' && value[row.id] !== undefined);
   if (Array.isArray(value)) return value.length > 0;
   return value !== undefined && value !== null && value !== '';
 };
@@ -515,4 +505,48 @@ export const isAnswered = (question, answers) => {
 /** The first unanswered required question among these, or null. */
 export function firstMissing(questions, answers) {
   return (questions || []).find((question) => question.required && !isAnswered(question, answers)) || null;
+}
+
+export const FORM_FILE_FORMAT = 'frc-scouting-form';
+
+/**
+ * A form as a file, in the same format as the files in scouting-forms/: the season's built-in sections and questions,
+ * plus `design`, everything the designer changed (added questions, wording, visibility, order, looks). Exported from
+ * Scouting Admin > Edit, and the file can be imported back, shared with another team, or committed to the repo.
+ */
+export function formToFile(formType, schema, extra = {}) {
+  const { design: _baseline, ...file } = FORM_FILES[formType];
+  return { ...file, ...extra, design: sanitizeForm(schema, formType) };
+}
+
+/**
+ * Reads an imported form file. Returns { schema, warnings } or { error }. The design is checked against this
+ * app's built-in form: questions in sections it doesn't have, and changes to built-in questions it doesn't know,
+ * are left out and listed in the warnings.
+ */
+export function formFromFile(raw, formType) {
+  let file = raw;
+  if (typeof raw === 'string') {
+    try {
+      file = JSON.parse(raw);
+    } catch {
+      return { error: 'That file is not valid JSON.' };
+    }
+  }
+  if (!file || typeof file !== 'object' || file.format !== FORM_FILE_FORMAT)
+    return { error: 'That is not a scouting form file.' };
+  if (file.form !== formType)
+    return { error: `That file is a ${FORM_TYPES[file.form]?.label.toLowerCase() || file.form} form, not ${FORM_TYPES[formType].label.toLowerCase()}.` };
+  const design = file.design && typeof file.design === 'object' ? file.design : {};
+  const schema = sanitizeForm(design, formType);
+  const warnings = [];
+  const dropped = (design.questions?.length || 0) - schema.questions.length;
+  if (dropped > 0) warnings.push(`${dropped} question${dropped === 1 ? '' : 's'} could not be read and were left out.`);
+  const unknown = Object.keys(design.core || {}).filter((key) => !schema.core[key] && design.core[key]);
+  const known = new Set(FORM_TYPES[formType].sections.flatMap((section) => section.blocks.map((entry) => entry.key)));
+  const missing = unknown.filter((key) => !known.has(key));
+  if (missing.length) warnings.push(`Changes to ${missing.length} built-in question${missing.length === 1 ? '' : 's'} this app doesn't have were left out.`);
+  if (file.game && file.game !== FORM_FILES[formType].game)
+    warnings.push(`The file is for ${file.game}; this app's built-in form is ${FORM_FILES[formType].game}.`);
+  return { schema, warnings };
 }

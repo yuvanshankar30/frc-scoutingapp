@@ -1,0 +1,104 @@
+{
+  "format": "frc-scouting-form",
+  "formatVersion": 1,
+  "game": "2026 REBUILT",
+  "form": "pit",
+  "label": "Pit scouting",
+  "movedSections": {
+    "extra": "main"
+  },
+  "sections": [
+    {
+      "id": "main",
+      "label": "Main",
+      "blocks": [
+        {
+          "key": "main.drivebase",
+          "label": "Drivebase",
+          "required": false,
+          "note": "One described answer, e.g. \"Swerve, MK5n modules\"."
+        },
+        {
+          "key": "main.dimensions",
+          "label": "Drivetrain dimensions (in)",
+          "required": false,
+          "note": "Length, width and height."
+        },
+        {
+          "key": "main.weight",
+          "label": "Robot weight (without bumpers and battery)",
+          "required": false
+        },
+        {
+          "key": "main.trench",
+          "label": "Trench, bump or both?",
+          "required": false
+        },
+        {
+          "key": "main.shooter",
+          "label": "Shooter and indexer",
+          "required": false,
+          "note": "Shooter type, indexer type and hopper capacity."
+        },
+        {
+          "key": "main.bps",
+          "label": "Estimated BPS",
+          "required": false
+        },
+        {
+          "key": "main.autos",
+          "label": "Autos",
+          "required": false,
+          "note": "Each auto they can run, drawn on the field with a name and notes."
+        },
+        {
+          "key": "main.autoPoints",
+          "label": "How many points do you usually score in auto?",
+          "required": false
+        },
+        {
+          "key": "main.roles",
+          "label": "Preferred role in the game",
+          "required": false
+        },
+        {
+          "key": "main.strengths",
+          "label": "Strengths",
+          "required": false
+        },
+        {
+          "key": "main.weaknesses",
+          "label": "Weaknesses and what is likely to break",
+          "required": false
+        },
+        {
+          "key": "main.breaker",
+          "label": "Main breaker and CAN",
+          "required": false,
+          "note": "Main breaker brand and bump protection, number of CANivores, CAN bus count."
+        },
+        {
+          "key": "main.controls",
+          "label": "Controls and software",
+          "required": false,
+          "note": "Coprocessor, WPILib, auto tools, vision, language."
+        },
+        {
+          "key": "main.contact",
+          "label": "Strat person's phone number",
+          "required": false
+        },
+        {
+          "key": "main.notes",
+          "label": "Extra notes",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "design": {
+    "questions": [],
+    "core": {},
+    "order": {}
+  }
+}

@@ -4,13 +4,8 @@ What keeps the codebase consistent and the checks passing.
 
 ## Formatting
 
-All code goes through Prettier. **Run `npm run format` after every code change.**
-
-- The config lives in `prettier/` (`prettierrc.json` and `prettierignore`); `npm run format` and
-  `npm run format:check` point Prettier at it. It formats everything in `src/` (JS, Svelte, CSS).
-- `npm test` fails if any file in `src/` isn't formatted (`src/lib/docs/formatting.test.js`); the fix is always
-  `npm run format`.
-- Don't add folder names to `prettier/prettierignore`: patterns there match at any depth.
+Keep the style of the file you are editing: two-space indents in `src/`, single quotes, and lines up to about
+120 characters. `npm run lint` catches the mistakes that matter (unused code, undefined names).
 
 ## Database changes
 
@@ -53,6 +48,6 @@ native `<select>` or date input appears outside these components.
 
 ## Versioning
 
-The version is in [VERSION.md](../../VERSION.md) (newest first) and `package.json`. Every change adds a row
+The version is in [VERSION.md](../VERSION.md) (newest first) and `package.json`. Every change adds a row
 ([semantic versioning](https://semver.org)): MAJOR for a big feature or anything people must do differently, MINOR for a
 new feature or noticeable change, PATCH for fixes, copy, refactors and docs.

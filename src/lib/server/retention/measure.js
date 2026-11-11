@@ -1,12 +1,12 @@
-// Reads what the cleanup plan (#125) is built from: sizes and the per-event inventory (SQL functions from migration
-// 20261024000000_data_cleanup_inventory.sql, service role only), the global sources' counts and the active event.
+// Reads what the cleanup plan is built from: sizes and the per-event inventory (SQL functions from migration
+// the database schema, service role only), the global sources' counts and the active event.
 import { RETENTION_POLICY, retentionLimits } from './policy.js';
 import { buildCleanupPlan } from './plan.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const MIGRATION_NOTE =
-  'Storage sizes need the data cleanup migration (20261024000000_data_cleanup_inventory.sql) on the database.';
+  'Storage sizes need the database schema (supabase/migrations) applied.';
 
 async function globalCounts(db, now) {
   const out = {};

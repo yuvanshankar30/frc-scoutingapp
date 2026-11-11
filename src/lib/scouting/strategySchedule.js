@@ -1,6 +1,7 @@
+import { compareTbaMatches } from '../matches/matchKeys.js';
 import { isMatchPlayed } from '../matches/matchProjection.js';
 
-const timeFor = (match) => {
+export const timeFor = (match) => {
   for (const value of [match?.predicted_time, match?.time, match?.actual_time]) {
     const seconds = Number(value);
     if (Number.isFinite(seconds) && seconds > 0) return seconds;
@@ -8,13 +9,13 @@ const timeFor = (match) => {
   return null;
 };
 
-const matchOrder = (left, right) => {
+// Start time when both matches have one; otherwise play order (level, set, match), so an untimed playoff never sorts
+// in among the quals by its match number.
+export const matchOrder = (left, right) => {
   const leftTime = timeFor(left);
   const rightTime = timeFor(right);
   if (leftTime != null && rightTime != null && leftTime !== rightTime) return leftTime - rightTime;
-  if (leftTime != null) return -1;
-  if (rightTime != null) return 1;
-  return Number(left?.match_number || 0) - Number(right?.match_number || 0);
+  return compareTbaMatches(left, right);
 };
 
 export function teamAlliance(match, teamKey) {

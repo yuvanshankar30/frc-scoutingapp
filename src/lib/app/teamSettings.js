@@ -1,7 +1,8 @@
 // The team's own settings: who the app belongs to and how it looks. An admin sets them under Scouting Admin > Team
 // settings, and scripts can set them with `npm run admin -- set-team ...` (scripts/admin.mjs). One row in the
 // app_settings table holds them; this module is the single place that reads, checks and applies them, in the
-// browser, on the server and in that script.
+// browser, on the server and in that script. The look beyond the brand color is in appearance.js.
+import { appearanceColumn, normalizeAppearance } from './appearance.js';
 
 export const DEFAULT_BRAND_COLOR = '#2563eb';
 /** Quick picks in the settings form; any color can be chosen as well. */
@@ -21,9 +22,7 @@ export const THEME_CHOICES = ['dark', 'light'];
 // Pages a team can switch off in Team settings. Hidden pages drop out of the menu; their addresses still work
 // for anyone who has them bookmarked. Keys match the menu items in navigation.js.
 export const OPTIONAL_FEATURES = Object.freeze([
-  { key: 'pitcrew', label: 'Pit Crew', blurb: 'Robot failure tickets for your own robot' },
   { key: 'driveteam', label: 'Drive Team', blurb: "Your team's schedule and standings" },
-  { key: 'predictions', label: 'Predictions', blurb: 'The match prediction game' },
   { key: 'assistant', label: 'Ask the data', blurb: 'AI questions about the scouting data (needs an API key)' },
   { key: 'bluealliance', label: 'Blue Alliance', blurb: 'Team and event lookups' },
   { key: 'epa', label: 'EPA', blurb: 'Statbotics-style expected points' }
@@ -76,14 +75,15 @@ export function normalizeTeamSettings(row) {
     timeZone: text(row.time_zone, 64) || 'UTC',
     logoUrl: typeof row.logo_url === 'string' && /^https?:\/\//.test(row.logo_url) ? row.logo_url : '',
     hiddenFeatures: (row.hidden_features || []).filter((key) => OPTIONAL_FEATURE_KEYS.has(key)),
-    allowSignUp: row.allow_sign_up !== false
+    allowSignUp: row.allow_sign_up !== false,
+    appearance: normalizeAppearance(row.appearance)
   };
 }
 
 /**
  * Checks what an admin (or `npm run admin -- set-team`) submitted. Returns { value, error }: value holds app_settings
- * columns ready to write. `isValidTimeZone` comes from timezone.js; it is passed in so this file stays free of
- * imports.
+ * columns ready to write. `isValidTimeZone` comes from timezone.js; it is passed in so this file needs no
+ * browser- or server-only imports.
  */
 export function validateTeamSettingsInput(input = {}, { isValidTimeZone = () => true } = {}) {
   const teamNumber = parseTeamNumber(input.teamNumber);
@@ -118,7 +118,8 @@ export function validateTeamSettingsInput(input = {}, { isValidTimeZone = () => 
       default_theme: defaultTheme,
       time_zone: timeZone,
       hidden_features: [...new Set(hidden.filter((key) => OPTIONAL_FEATURE_KEYS.has(key)))],
-      allow_sign_up: input.allowSignUp !== false
+      allow_sign_up: input.allowSignUp !== false,
+      appearance: appearanceColumn(input.appearance)
     }
   };
 }

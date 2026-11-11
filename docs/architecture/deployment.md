@@ -7,10 +7,10 @@ The app is a Node server built with `@sveltejs/adapter-node`. Anything that runs
 The Supabase URL and anon key are inlined into the browser bundle at build time, so they must be set when building.
 Everything else is read when the server starts.
 
-**Docker** (`Dockerfile` in the repo root; listens on port 8080):
+**Docker** (`deploy/Dockerfile`; build from the repo root with `npm run docker:build`; listens on port 8080):
 
 ```sh
-docker build \
+docker build -f deploy/Dockerfile \
   --build-arg PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co \
   --build-arg PUBLIC_SUPABASE_ANON_KEY=your-anon-key \
   -t frc-scoutingapp .
@@ -58,3 +58,20 @@ curl -X POST https://scouting.example.org/api/scouting-admin/retention-cron \
 ```
 
 Optional limits: `RETENTION_DB_LIMIT_MB`, `RETENTION_STORAGE_LIMIT_MB` (environment variables, MB).
+
+## Where to host it
+
+The app is one Node.js server (SvelteKit's `adapter-node`) plus the database, so any host that runs a container or a
+Node process works. A few that teams use:
+
+| Host | How |
+| --- | --- |
+| **Google Cloud Run** | Build the image (`npm run docker:build`, or `gcloud builds submit` with `deploy/Dockerfile`), deploy it, and set the environment variables as Cloud Run secrets. It scales to zero between events. |
+| **Firebase App Hosting** | Runs on Cloud Run underneath: connect the repository, keep the default Node build, and add the environment variables as App Hosting secrets. Firebase Hosting alone (static files) is not enough, because the app has a server. |
+| **Render, Railway, Fly.io** | Point them at the repository or the Docker image; they read `PORT` themselves. |
+| **A school or pit computer** | `npm run build`, then `node build` behind any reverse proxy, or run the Docker image. |
+
+**The database** is Supabase (Postgres with sign-in and file storage). Use the hosted service, or run Supabase
+yourself: it is open source and ships as Docker containers, so it also runs on a Google Cloud virtual machine next to
+the app. Firestore or other non-Postgres databases are not supported: every query and every security rule is written
+for Postgres.

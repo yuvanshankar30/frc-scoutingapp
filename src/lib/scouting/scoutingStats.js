@@ -352,6 +352,28 @@ export function matchRankingsToPairwiseVotes(rankings) {
   return votes;
 }
 
+// The Picklist's auto rank: each team's Scout Power blended with its match-ranking consensus (the share of
+// head-to-heads it won across the saved match rankings, 0-100) at `weight` (0..1). Unlike Power Rankings, where
+// the consensus stays a separate column, the Picklist lets its slider fold the human orderings into the order.
+// A team nobody has ranked keeps its Scout Power alone. Returns the teams best first, each with `autoScore`
+// plus the consensus fields applyPairwiseConsensus adds (humanRank, humanWinRate, humanVoteCount).
+export function blendMatchRankings(teams, rankings, weight = 0) {
+  const share = Math.min(1, Math.max(0, Number(weight) || 0));
+  return applyPairwiseConsensus(teams, matchRankingsToPairwiseVotes(rankings))
+    .map((team) => {
+      const consensus = team.humanVoteCount > 0 && Number.isFinite(team.humanWinRate) ? team.humanWinRate * 100 : null;
+      const autoScore =
+        consensus == null
+          ? (team.scoutPower ?? null)
+          : weightedScore([
+              { value: team.scoutPower, weight: 1 - share },
+              { value: consensus, weight: share }
+            ]);
+      return { ...team, autoScore };
+    })
+    .sort((a, b) => (b.autoScore ?? -1) - (a.autoScore ?? -1));
+}
+
 // Human preference is intentionally parallel to calculated Scout Power. It
 // creates a consensus rank and review signal but never modifies scoutPower or
 // powerRank, preserving the provenance of both measures.

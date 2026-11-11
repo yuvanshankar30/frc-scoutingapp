@@ -3,14 +3,18 @@
   import CustomQuestions from '$lib/components/forms/CustomQuestions.svelte';
   import { fetchLiveForm } from '$lib/scouting/forms/formsClient.js';
   import {
+    CARD_SIZES,
+    TEXT_SIZES,
     createLayout,
     emptyForm,
     firstMissing,
     questionsIn,
-    sanitizeAnswers
+    sanitizeAnswers,
+    shownOnKind
   } from '$lib/scouting/forms/formSchema.js';
+  import { coreChoiceLists, defaultChoiceLabel } from '$lib/scouting/forms/coreChoices.js';
   import Select from '$lib/components/common/Select.svelte';
-  import { onDestroy, onMount } from 'svelte';
+  import { afterUpdate, onDestroy, onMount } from 'svelte';
   import { holdScreenAwake } from '$lib/ui/wakeLock.js';
   import { isPhone } from '$lib/stores/device.js';
   import { scoutIdentity } from '$lib/scouting/scoutIdentity.js';
@@ -20,8 +24,15 @@
     MATCH_OPTIONAL_RATING_FIELDS,
     MATCH_FORM_ROLES as TELEOP_ROLES,
     AUTO_FUEL_SOURCES,
-    ACCURACY_LABELS,
-    BPS_LABELS,
+    BPS_SLIDER_MAX,
+    DEFENSE_EFFECTIVENESS_MAX,
+    DEFENSE_PERIODS,
+    FOUL_NATURES,
+    MATCH_SHIFTS,
+    SECTION_FIELDS,
+    bpsBucket,
+    normalizeRankedTeamKey,
+    overallRobotStatus,
     validateMatchScoutForm,
     validatePerformanceRatings,
     validateRobotCondition,
@@ -42,20 +53,18 @@
     Check,
     ChevronRight,
     ClipboardCheck,
-    ExternalLink,
     Gauge,
-    GraduationCap,
     MapPinned,
     Minus,
     Plus,
     Route,
+    Shield,
     Shuffle,
     Timer,
     Trophy,
     Wrench
   } from 'lucide-svelte';
   import PowerRankingPicker from '$lib/components/scouting/PowerRankingPicker.svelte';
-  import { youtubeUrl } from '$lib/scouting/training.js';
   import {
     REPORT_KINDS,
     REPORT_KIND_LABELS,
@@ -66,7 +75,6 @@
 
   const START_POSITIONS = ['left trench', 'left mound', 'center', 'right mound', 'right trench'];
   const RATING_FIELDS = [...MATCH_FORM_RATING_FIELDS, ...MATCH_OPTIONAL_RATING_FIELDS];
-  const TELEOP_RATING_FIELDS = MATCH_FORM_RATING_FIELDS;
   const BALL_SOURCE_OPTIONS = AUTO_FUEL_SOURCES.map((source) => [source, source]);
   const AUTO_POINTS_SLIDER_MAX = 500;
 
@@ -107,7 +115,23 @@
   const phaseBefore = (current) => kindPhases[kindPhases.indexOf(current) - 1] || 'prematch';
   $: layout = createLayout(customForm.schema, 'match');
   $: orders = layout.orders;
-  const customIn = (id) => questionsIn(customForm.schema, id);
+  // Reactive (not a plain function) so the page redraws as soon as the form changes, e.g. a question added in the designer.
+  $: customIn = (id) => questionsIn(customForm.schema, id).filter((question) => shownOnKind(question, reportKind));
+  // A built-in block's place and look from the form design: order, width in the 12-column grid, accent, text size.
+  // `orders` and `layout` are passed in so the markup re-renders when the form loads.
+  function blockStyle(key, orderMap, look) {
+    const style = look.style(key);
+    const span = CARD_SIZES.find((size) => size.key === style.size)?.span;
+    const zoom = TEXT_SIZES.find((size) => size.key === style.textSize)?.scale ?? 1;
+    return [
+      `order:${orderMap.get(`core:${key}`) ?? 0}`,
+      span ? `--span:${span}` : '',
+      zoom !== 1 ? `zoom:${zoom}` : '',
+      style.accent ? `--accent:${style.accent};--accent-strong:${style.accent}` : ''
+    ]
+      .filter(Boolean)
+      .join(';');
+  }
   // The first phase (from `phases`) that still has an unanswered required added question.
   function missingCustom(phases) {
     // A robot that never came out answers nothing else, added questions included.
@@ -172,8 +196,6 @@
   let shuttleBand = '';
   let shuttleRating = 0;
   let shuttleNotes = '';
-  let offenseRating = 0;
-  let defenseRating = 0;
   let performanceNotes = '';
   let powerRanking = {};
   let rankingSkipped = [];
@@ -182,8 +204,27 @@
   let breakDetails = '';
   let breakImpact = '';
   let breakResponse = '';
-  // The robots in this match (for the power ranking) and, for a training match, the past match being watched.
-  let matchTeams = { red: [], blue: [], training: null };
+  // Data: who the robot defended, when (its hub active/inactive, which shifts) and how well (1-10).
+  let defenseTargets = [];
+  let defensePeriods = [];
+  let defenseShifts = [];
+  let defenseEffectiveness = 0;
+  let defenseTargetInput = '';
+  // Performance: balls per second from a slider (null until the scout moves it). Robot: status for every shift,
+  // and what kind of foul it was.
+  let bps = null;
+  let robotShiftStatus = {};
+  let foulNature = '';
+  let foulDetails = '';
+  // The robot status every older reader uses is the worst status across the shifts.
+  $: if (Object.keys(robotShiftStatus).length) teleopRobotStatus = overallRobotStatus(robotShiftStatus);
+  $: playedDefense = teleopRoles.includes('Defense');
+  $: hasFouls = (foulsMinor || 0) + (foulsMajor || 0) > 0;
+  // The robots it could have defended: the other alliance, or whatever the scout types when the schedule is missing.
+  $: opponents = (alliance === 'red' ? matchTeams.blue : matchTeams.red) || [];
+  $: defenseChoices = [...new Set([...opponents, ...defenseTargets])];
+  // The robots in this match (for the power ranking).
+  let matchTeams = { red: [], blue: [] };
   let matchTeamsLoading = false;
   let matchTeamsFor = '';
   let submitted = false;
@@ -229,7 +270,10 @@
     matchKeyValid &&
     robotNumber.trim() &&
     scoutName.trim() &&
-    (noShow || reportKind !== 'data' || (startingPosition && typeof preload === 'boolean'));
+    (noShow ||
+      reportKind !== 'data' ||
+      ((!layout.need('prematch.start') || startingPosition) &&
+        (!layout.need('prematch.preload') || typeof preload === 'boolean')));
   $: assignmentLabel = assignmentReady ? `Match ${matchNumber} · Robot ${robotNumber}` : 'Set your assignment';
   // The pit crew handoff belongs to Robot scouting, the tab that watches the robot's condition.
   $: requiresPitReport =
@@ -317,8 +361,6 @@
     shuttleBand = '';
     shuttleRating = 0;
     shuttleNotes = '';
-    offenseRating = 0;
-    defenseRating = 0;
     performanceNotes = '';
     powerRanking = {};
     rankingSkipped = [];
@@ -327,8 +369,179 @@
     breakDetails = '';
     breakImpact = '';
     breakResponse = '';
+    defenseTargets = [];
+    defensePeriods = [];
+    defenseShifts = [];
+    defenseEffectiveness = 0;
+    defenseTargetInput = '';
+    bps = null;
+    robotShiftStatus = {};
+    foulNature = '';
+    foulDetails = '';
     selectPhase('prematch');
   }
+
+  // Design mode (/matchscout?design=1, inside Scouting Admin > Edit): this page is the form designer's canvas, so the
+  // admin edits exactly what a scout sees. The designer sends the draft form; clicking a question selects it there,
+  // and questions (or question types from the designer's palette) are dragged around right here.
+  let designMode = false;
+  let designSelected = null;
+  // A built-in answer's wording: the form's own, else the built-in one (src/lib/scouting/forms/coreChoices.js).
+  $: say = (key, value) => layout.choice(key, value, defaultChoiceLabel('match', key, value));
+  const toDesigner = (message) => window.parent?.postMessage(message, window.location.origin);
+  function onDesignMessage(event) {
+    if (event.origin !== window.location.origin || event.source !== window.parent) return;
+    const data = event.data || {};
+    if (data.type !== 'form-design') return;
+    customForm = { version: data.version || 0, schema: data.schema };
+    designSelected = data.selectedId || null;
+    if (data.kind && data.kind !== reportKind) {
+      reportKind = data.kind;
+      clearAnswers();
+    }
+    if (data.phase && kindPhases.includes(data.phase)) selectPhase(data.phase);
+  }
+  const designTarget = (event) => event.target?.closest?.('[data-design-id]');
+  // A click selects the card in the designer and still works as a normal tap, so answers can be tried out here.
+  function designClick(event) {
+    if (!designMode) return;
+    const target = designTarget(event);
+    if (!target) return;
+    toDesigner({ type: 'design-select', id: target.dataset.designId });
+  }
+
+  // Double-clicking a title, an answer or an option renames it right on the form (a text box opens over it).
+  const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  function renameTargets(id) {
+    if (id.startsWith('core:')) {
+      const key = id.slice(5);
+      return [
+        { part: 'label', text: layout.label(key) },
+        ...coreChoiceLists('match', key).flatMap((list) =>
+          list.options.map(([value]) => ({ part: 'choice', value, text: say(key, value) }))
+        )
+      ];
+    }
+    const question = (customForm.schema?.questions || []).find((entry) => entry.id === id);
+    if (!question) return [];
+    return [
+      { part: 'label', text: question.label },
+      ...(question.options || []).map((option) => ({ part: 'option', value: option.id, text: option.label })),
+      ...(question.rows || []).map((row) => ({ part: 'row', value: row.id, text: row.label }))
+    ];
+  }
+  function designDoubleClick(event) {
+    if (!designMode) return;
+    const block = designTarget(event);
+    if (!block) return;
+    // The smallest element under the pointer that holds text, and the title or answer whose wording it shows.
+    let element = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const said = clean(element?.textContent);
+    const targets = renameTargets(block.dataset.designId).filter((entry) => clean(entry.text));
+    const found =
+      targets.find((entry) => clean(entry.text) === said) ||
+      targets.find((entry) => said.startsWith(clean(entry.text)) && said.length - clean(entry.text).length < 14);
+    if (!found) return;
+    event.preventDefault();
+    openRename(element, block.dataset.designId, found);
+  }
+  function openRename(element, id, target) {
+    document.querySelector('.design-rename')?.remove();
+    const box = element.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.className = 'design-rename';
+    input.value = target.text;
+    input.maxLength = target.part === 'label' ? 200 : 80;
+    Object.assign(input.style, {
+      left: `${Math.max(4, box.left - 4)}px`,
+      top: `${box.top - 4}px`,
+      width: `${Math.max(box.width + 8, 140)}px`,
+      height: `${box.height + 8}px`,
+      font: getComputedStyle(element).font
+    });
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      const text = input.value.trim();
+      input.remove();
+      if (save && text && text !== target.text)
+        toDesigner({ type: 'design-rename', id, part: target.part, value: target.value, text });
+    };
+    input.addEventListener('keydown', (keyEvent) => {
+      if (keyEvent.key === 'Enter') finish(true);
+      if (keyEvent.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+  }
+  // Text boxes and sliders inside a card must not start a card drag.
+  function designPointerDown(event) {
+    if (!designMode) return;
+    const control = event.target?.closest?.('input, textarea, select, [contenteditable]');
+    if (control) designTarget(event)?.setAttribute('draggable', 'false');
+  }
+  const designPointerUp = () => paintDesign();
+  function designDragStart(event) {
+    const target = designTarget(event);
+    if (!designMode || !target) return;
+    event.dataTransfer.setData('text/plain', `design-move:${target.dataset.designId}`);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+  let designOver = null;
+  function designDragOver(event) {
+    if (!designMode) return;
+    event.preventDefault();
+    const target = designTarget(event);
+    designOver = target?.dataset.designId || null;
+  }
+  function designDrop(event) {
+    if (!designMode) return;
+    event.preventDefault();
+    const raw = event.dataTransfer.getData('text/plain') || '';
+    const beforeId = designTarget(event)?.dataset.designId || null;
+    designOver = null;
+    if (raw.startsWith('design-move:')) {
+      const id = raw.slice('design-move:'.length);
+      if (id !== beforeId) toDesigner({ type: 'design-move', id, beforeId, section: phase });
+    } else if (raw.startsWith('design-new:'))
+      toDesigner({ type: 'design-add', questionType: raw.slice('design-new:'.length), beforeId, section: phase });
+  }
+  // Marks the selected and drop-target cards, and lets every question be dragged.
+  function paintDesign() {
+    if (!designMode) return;
+    for (const element of document.querySelectorAll('[data-design-id]')) {
+      element.setAttribute('draggable', 'true');
+      element.classList.toggle('design-selected', element.dataset.designId === designSelected);
+      element.classList.toggle('design-over', element.dataset.designId === designOver);
+    }
+  }
+  afterUpdate(paintDesign);
+  function startDesignMode() {
+    window.addEventListener('message', onDesignMessage);
+    window.addEventListener('click', designClick, true);
+    window.addEventListener('dblclick', designDoubleClick, true);
+    window.addEventListener('pointerdown', designPointerDown, true);
+    window.addEventListener('pointerup', designPointerUp, true);
+    window.addEventListener('dragstart', designDragStart, true);
+    window.addEventListener('dragover', designDragOver, true);
+    window.addEventListener('drop', designDrop, true);
+    toDesigner({ type: 'design-ready', form: 'match' });
+  }
+  onDestroy(() => {
+    if (!designMode) return;
+    window.removeEventListener('message', onDesignMessage);
+    window.removeEventListener('click', designClick, true);
+    window.removeEventListener('dblclick', designDoubleClick, true);
+    window.removeEventListener('pointerdown', designPointerDown, true);
+    window.removeEventListener('pointerup', designPointerUp, true);
+    window.removeEventListener('dragstart', designDragStart, true);
+    window.removeEventListener('dragover', designDragOver, true);
+    window.removeEventListener('drop', designDrop, true);
+  });
+  $: if (designMode) toDesigner({ type: 'design-view', phase, kind: reportKind });
 
   function switchKind(kind) {
     if (kind === reportKind || saving) return;
@@ -348,7 +561,28 @@
   function toggleTeleopRole(role) {
     teleopRolesNone = false;
     teleopRoles = teleopRoles.includes(role) ? teleopRoles.filter((entry) => entry !== role) : [...teleopRoles, role];
+    // A robot seen shuttling did shuttle: the Shuttling tab starts at Yes.
+    if (role === 'Shuttler' && teleopRoles.includes(role)) shuttled = true;
   }
+
+  const toggleIn = (list, value) => (list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value]);
+
+  function addDefenseTarget() {
+    // Keeps a B team's letter (4414B), like TBA's keys, so the target matches the schedule.
+    const key = normalizeRankedTeamKey(defenseTargetInput.replace(/\s/g, ''));
+    if (key && !defenseTargets.includes(key) && defenseTargets.length < 3) defenseTargets = [...defenseTargets, key];
+    defenseTargetInput = '';
+  }
+
+  const defenseAnswer = () =>
+    playedDefense
+      ? {
+          targets: defenseTargets,
+          periods: defensePeriods,
+          shifts: defenseShifts,
+          effectiveness: defenseEffectiveness || null
+        }
+      : null;
 
   function toggleRating(field, value) {
     const next = ratings[field] === value ? 0 : value;
@@ -365,22 +599,44 @@
       preload,
       teleop_roles: teleopRoles,
       teleop_roles_none: teleopRolesNone,
-      balls_scored_band: ballsScored
+      balls_scored_band: ballsScored,
+      section_fields: SECTION_FIELDS,
+      defense: defenseAnswer(),
+      teleop_notes: teleopNotes
     };
   }
 
-  const ratingAnswers = () => ({ robot_present: robotPresent, ratings, ratings_unknown: ratingsUnknown });
+  // Shot accuracy plus the BPS slider, whose 1-5 bucket keeps the older BPS rating filled in.
+  const ratingAnswers = () => ({
+    robot_present: robotPresent,
+    section_fields: SECTION_FIELDS,
+    ratings: { 'Shot accuracy': ratings['Shot accuracy'] || 0, ...(bps === null ? {} : { BPS: bpsBucket(bps) }) },
+    ratings_unknown: [],
+    bps,
+    intake_speed: intakeSpeed || null,
+    driver_skill: driverSkill || null,
+    power_ranking: powerRanking,
+    performance_notes: performanceNotes
+  });
 
   const conditionAnswers = () => ({
     robot_present: robotPresent,
     significant_crash: significantCrash,
     crash_target: crashTarget,
     crash_details: crashDetails,
-    teleop_robot_status: teleopRobotStatus
+    teleop_robot_status: teleopRobotStatus,
+    section_fields: SECTION_FIELDS,
+    robot_status_shifts: robotShiftStatus,
+    mechanical_break: mechanicalBreak,
+    break_details: breakDetails,
+    fouls_minor: foulsMinor,
+    fouls_major: foulsMajor,
+    foul_nature: hasFouls ? foulNature : '',
+    foul_details: hasFouls ? foulDetails : ''
   });
 
   function continueFromTeleop() {
-    const invalid = validateMatchScoutForm(formAnswers());
+    const invalid = validateMatchScoutForm(formAnswers(), layout);
     if (invalid) {
       error = invalid;
       return;
@@ -389,7 +645,7 @@
   }
 
   function continueFromPerformance() {
-    const invalid = validatePerformanceRatings(ratingAnswers());
+    const invalid = validatePerformanceRatings(ratingAnswers(), layout);
     if (invalid) {
       error = invalid;
       return;
@@ -398,12 +654,12 @@
   }
 
   function continueFromRobot() {
-    const invalid = validateRobotCondition(conditionAnswers());
+    const invalid = validateRobotCondition(conditionAnswers(), layout);
     if (invalid) {
       error = invalid;
       return;
     }
-    if (!noShow && typeof mechanicalBreak !== 'boolean') {
+    if (!noShow && layout.need('postmatch.break') && typeof mechanicalBreak !== 'boolean') {
       error = 'Select whether a mechanical break occurred.';
       return;
     }
@@ -427,7 +683,7 @@
 
   async function loadMatchTeams(key) {
     matchTeamsFor = key;
-    matchTeams = { red: [], blue: [], training: null };
+    matchTeams = { red: [], blue: [] };
     if (!key) return;
     const [event, match] = key.split('|');
     matchTeamsLoading = true;
@@ -441,8 +697,7 @@
             if (matchTeamsFor !== key || !payload?.success) return;
             matchTeams = {
               red: payload.data.red || [],
-              blue: payload.data.blue || [],
-              training: payload.data.training || null
+              blue: payload.data.blue || []
             };
             // The schedule knows which alliance the robot is on; a scout who picked the other one gets corrected.
             if (!editing && robotKey && matchTeams.red.includes(robotKey)) alliance = 'red';
@@ -698,8 +953,6 @@
       shuttleBand = entry.shuttle_band || '';
       shuttleRating = entry.shuttle_rating || 0;
       shuttleNotes = entry.shuttle_notes || '';
-      offenseRating = entry.offense_rating || 0;
-      defenseRating = entry.defense_rating || 0;
       performanceNotes = entry.performance_notes || '';
       powerRanking = { ...(entry.power_ranking || {}) };
       foulsMinor = entry.fouls_minor ?? null;
@@ -707,6 +960,14 @@
       breakDetails = entry.break_details || '';
       breakImpact = entry.break_impact || '';
       breakResponse = entry.break_response || '';
+      defenseTargets = [...(entry.defense?.targets || [])];
+      defensePeriods = [...(entry.defense?.periods || [])];
+      defenseShifts = [...(entry.defense?.shifts || [])];
+      defenseEffectiveness = entry.defense?.effectiveness || 0;
+      bps = entry.bps ?? null;
+      robotShiftStatus = { ...(entry.robot_status_shifts || {}) };
+      foulNature = entry.foul_nature || '';
+      foulDetails = entry.foul_details || '';
       editing = true;
       showReports = false;
     } catch (exception) {
@@ -719,15 +980,8 @@
   // Only the answers this tab asks for, so a performance or robot report never carries stray data-scouting values.
   function kindAnswers() {
     if (reportKind === 'performance') {
-      return {
-        ...ratingAnswers(),
-        intake_speed: intakeSpeed || null,
-        driver_skill: driverSkill || null,
-        offense_rating: offenseRating || null,
-        defense_rating: defenseRating || null,
-        performance_notes: performanceNotes,
-        power_ranking: powerRanking
-      };
+      // Offense and defense ratings are no longer asked; defense is measured from Data scouting instead.
+      return ratingAnswers();
     }
     if (reportKind === 'robot') {
       return {
@@ -744,6 +998,8 @@
         break_details: breakDetails,
         break_impact: breakImpact,
         break_response: breakResponse,
+        foul_nature: hasFouls ? foulNature : '',
+        foul_details: hasFouls ? foulDetails : '',
         beached
       };
     }
@@ -758,7 +1014,8 @@
       shuttled,
       shuttle_band: shuttled ? shuttleBand : '',
       shuttle_rating: shuttled ? shuttleRating || null : null,
-      shuttle_notes: shuttled ? shuttleNotes : ''
+      shuttle_notes: shuttled ? shuttleNotes : '',
+      defense: defenseAnswer()
     };
   }
 
@@ -778,16 +1035,16 @@
     }
     const invalid =
       reportKind === 'performance'
-        ? validatePerformanceRatings(ratingAnswers())
+        ? validatePerformanceRatings(ratingAnswers(), layout)
         : reportKind === 'robot'
-          ? validateRobotCondition(conditionAnswers())
-          : validateMatchScoutForm(formAnswers());
+          ? validateRobotCondition(conditionAnswers(), layout)
+          : validateMatchScoutForm(formAnswers(), layout);
     if (invalid) {
       phase = reportKind === 'data' ? 'teleop' : reportKind;
       error = invalid;
       return;
     }
-    if (!noShow && reportKind === 'robot' && typeof mechanicalBreak !== 'boolean') {
+    if (!noShow && reportKind === 'robot' && layout.need('postmatch.break') && typeof mechanicalBreak !== 'boolean') {
       phase = 'robot';
       error = 'Select whether a mechanical break occurred.';
       return;
@@ -823,7 +1080,7 @@
         body: {
           action: 'save-entry',
           form_version: 2,
-          section_fields: 3,
+          section_fields: SECTION_FIELDS,
           report_kind: reportKind,
           robot_present: robotPresent,
           scout_name: scoutName,
@@ -872,9 +1129,12 @@
     } catch {
       /* storage can be unavailable */
     }
-    void fetchLiveForm('match').then((live) => {
-      customForm = live;
-    });
+    designMode = new URLSearchParams(window.location.search).get('design') === '1';
+    if (designMode) startDesignMode();
+    else
+      void fetchLiveForm('match').then((live) => {
+        customForm = live;
+      });
     try {
       const response = await fetch('/api/matchscout?resource=start-photos', { headers: await getAuthHeader() });
       const payload = await response.json();
@@ -905,9 +1165,9 @@
 
 <svelte:head><title>Match Scouting</title></svelte:head>
 
-<main class="match-scouting-page">
+<main class="match-scouting-page" class:design-mode={designMode}>
   {#if $isPhone}
-    <!-- Phone (#124): who is scouting and what, at a glance; the competition and past reports fold away. -->
+    <!-- Phone: who is scouting and what, at a glance; the competition and past reports fold away. -->
     <header class="ph-scout">
       <div class="ph-scout-top">
         <div><small>{me.greeting}, {me.firstName}</small><b>{REPORT_KIND_LABELS[reportKind]}</b></div>
@@ -936,7 +1196,6 @@
           <span>Competition</span>
           <Select
             class="form-select"
-            wrapText
             value={eventKey}
             disabled={saving || reportsLoading}
             on:change={changeCompetition}
@@ -1029,7 +1288,7 @@
   {/if}
 
   {#if $isPhone}
-    <!-- Phone (#124): kind and stage in one slim sticky bar. Kind is icon-only (the title names it);
+    <!-- Phone: kind and stage in one slim sticky bar. Kind is icon-only (the title names it);
          only the current stage shows its name. -->
     <div class="ph-bar">
       <div class="ph-kinds" role="tablist" aria-label="Kind of match scouting">
@@ -1066,7 +1325,9 @@
   <div class="scouting-shell">
     <aside class="stage-nav" aria-label={`${REPORT_KIND_LABELS[reportKind]} stages`}>
       {#each kindPhases as id, index (id)}
-        <button class:active={phase === id} on:click={() => (id === 'auto' ? openAutoPhase() : selectPhase(id))}
+        <button
+          class:active={phase === id}
+          on:click={() => (id === 'auto' && !designMode ? openAutoPhase() : selectPhase(id))}
           ><svelte:component this={PHASE_INFO[id].icon} size={18} /><span
             >{$isPhone ? PHASE_SHORT[id] : PHASE_INFO[id].label}</span
           ><small>{String(index + 1).padStart(2, '0')}</small></button
@@ -1075,23 +1336,6 @@
     </aside>
 
     <section class="match-workspace">
-      {#if matchTeams.training}
-        <div class="training-banner">
-          <GraduationCap size={18} />
-          <div>
-            <b>Training match</b><span
-              >{matchTeams.training.source_event_name || matchTeams.training.source_event_key} · {matchTeams.training
-                .source_label || matchTeams.training.source_match_key}</span
-            >
-          </div>
-          {#if matchTeams.training.video_key}<a
-              class="btn btn-secondary"
-              href={youtubeUrl(matchTeams.training.video_key)}
-              target="_blank"
-              rel="noopener noreferrer">Watch the match <ExternalLink size={14} /></a
-            >{:else}<span class="muted">No video on TBA</span>{/if}
-        </div>
-      {/if}
       {#if !submitted && assignmentReady && reportKind === 'robot'}
         <div class="persistent-status" class:urgent={requiresPitReport}>
           <div><span class="field-label">Robot status</span><small>Available throughout the match</small></div>
@@ -1182,7 +1426,7 @@
           <MapPinned size={20} />
         </div>
         <div class="blocks prematch-blocks">
-          <div class="blk assignment-blk" style="order:{orders.get('core:prematch.assignment') ?? 0}">
+          <div class="blk assignment-blk" data-design-id="core:prematch.assignment" style={blockStyle('prematch.assignment', orders, layout)}>
             <div class="assignment-grid">
               <label
                 >Scout name (required)<input
@@ -1225,6 +1469,7 @@
               </label>
               <fieldset class="alliance-field">
                 <legend>Alliance</legend>
+{#if layout.help('prematch.assignment')}<p class="field-help">{layout.help('prematch.assignment')}</p>{/if}
                 <div class="segmented alliance-choice">
                   <button class:chosen={alliance === 'red'} class="red-choice" on:click={() => (alliance = 'red')}
                     >Red</button
@@ -1235,12 +1480,13 @@
               </fieldset>
             </div>
           </div>
-          <div class="blk" style="order:{orders.get('core:prematch.present') ?? 0}">
+          <div class="blk" data-design-id="core:prematch.present" style={blockStyle('prematch.present', orders, layout)}>
             <fieldset class="control-group present-card">
-              <legend>Did the robot show up to the field?</legend>
+              <legend>{layout.label('prematch.present', 'Did the robot show up to the field?')}</legend>
+{#if layout.help('prematch.present')}<p class="field-help">{layout.help('prematch.present')}</p>{/if}
               <div class="segmented present-choice">
-                <button class:chosen={!noShow} aria-pressed={!noShow} on:click={() => setRobotPresent(true)}>Yes</button
-                ><button class:chosen={noShow} aria-pressed={noShow} on:click={() => setRobotPresent(false)}>No</button>
+                <button class:chosen={!noShow} aria-pressed={!noShow} on:click={() => setRobotPresent(true)}>{say('prematch.present', 'yes')}</button
+                ><button class:chosen={noShow} aria-pressed={noShow} on:click={() => setRobotPresent(false)}>{say('prematch.present', 'no')}</button>
               </div>
               {#if noShow}<p class="present-note">
                   Every other question is optional now. Submit the report, or add anything you saw first.
@@ -1248,18 +1494,19 @@
             </fieldset>
           </div>
           {#if reportKind === 'data'}
-            <div class="blk" style="order:{orders.get('core:prematch.preload') ?? 0}">
+            <div class="blk" data-design-id="core:prematch.preload" style={blockStyle('prematch.preload', orders, layout)}>
               <fieldset class="control-group preload-card">
-                <legend>{layout.label('prematch.preload', 'Preload')} (required)</legend>
+                <legend>{layout.label('prematch.preload', 'Preload')}{#if layout.need('prematch.preload')} (required){/if}</legend>
+{#if layout.help('prematch.preload')}<p class="field-help">{layout.help('prematch.preload')}</p>{/if}
                 <div class="segmented preload-choice">
-                  <button class:chosen={preload === true} on:click={() => (preload = true)}>Has preload</button><button
+                  <button class:chosen={preload === true} on:click={() => (preload = true)}>{say('prematch.preload', 'yes')}</button><button
                     class:chosen={preload === false}
-                    on:click={() => (preload = false)}>No preload</button
+                    on:click={() => (preload = false)}>{say('prematch.preload', 'no')}</button
                   >
                 </div>
               </fieldset>
             </div>
-            <div class="blk" style="order:{orders.get('core:prematch.start') ?? 0}">
+            <div class="blk" data-design-id="core:prematch.start" style={blockStyle('prematch.start', orders, layout)}>
               <div class="start-position-block">
                 <div class="start-position-head">
                   <span class="field-label">{layout.label('prematch.start', 'Starting position')}</span>
@@ -1327,7 +1574,7 @@
               </div>
             </div>
           {/if}
-          <CustomQuestions questions={customIn('prematch')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('prematch')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         <div class="section-footer">
           <span
@@ -1360,20 +1607,20 @@
         <div class="auto-layout">
           <div class="auto-controls blocks packed">
             {#if !layout.hidden('auto.ran')}
-              <div class="blk" style="order:{orders.get('core:auto.ran') ?? 0}">
+              <div class="blk" data-design-id="core:auto.ran" style={blockStyle('auto.ran', orders, layout)}>
                 <div class="control-group">
                   <span class="field-label">{layout.label('auto.ran', 'Did autonomous run?')}</span>
                   <div class="segmented">
-                    <button class:chosen={autoMoved === 'ran'} on:click={() => (autoMoved = 'ran')}>Yes</button><button
+                    <button class:chosen={autoMoved === 'ran'} on:click={() => (autoMoved = 'ran')}>{say('auto.ran', 'yes')}</button><button
                       class:chosen={autoMoved === 'did-not-run'}
-                      on:click={() => (autoMoved = 'did-not-run')}>No</button
+                      on:click={() => (autoMoved = 'did-not-run')}>{say('auto.ran', 'no')}</button
                     >
                   </div>
                 </div>
               </div>
             {/if}
             {#if !layout.hidden('auto.points')}
-              <div class="blk tall" style="order:{orders.get('core:auto.points') ?? 0}">
+              <div class="blk tall" data-design-id="core:auto.points" style={blockStyle('auto.points', orders, layout)}>
                 <div class="control-group auto-points-control">
                   <label for="auto-points-estimate" class="field-label"
                     >{layout.label('auto.points', 'Estimated points scored')}</label
@@ -1423,17 +1670,17 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.sources')}
-              <div class="blk tall" style="order:{orders.get('core:auto.sources') ?? 0}">
+              <div class="blk tall" data-design-id="core:auto.sources" style={blockStyle('auto.sources', orders, layout)}>
                 <fieldset class="control-group">
                   <legend class="field-label"
                     >{layout.label('auto.sources', 'Where did the robot collect fuel?')}</legend
                   >
                   {#if layout.help('auto.sources')}<small class="field-help">{layout.help('auto.sources')}</small>{/if}
                   <div class="choice-grid auto-source-grid">
-                    {#each BALL_SOURCE_OPTIONS as source}
+                    {#each layout.choices('auto.sources', BALL_SOURCE_OPTIONS) as source}
                       <button
                         class:chosen={ballSources.includes(source[0])}
-                        on:click={() => toggleBallSource(source[0])}>{source[1]}</button
+                        on:click={() => toggleBallSource(source[0])}>{say('auto.sources', source[0])}</button
                       >
                     {/each}
                   </div>
@@ -1441,7 +1688,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.cycles')}
-              <div class="blk" style="order:{orders.get('core:auto.cycles') ?? 0}">
+              <div class="blk" data-design-id="core:auto.cycles" style={blockStyle('auto.cycles', orders, layout)}>
                 <label class="control-group"
                   >{layout.label('auto.cycles', 'Autonomous cycles')}<input
                     class="form-input"
@@ -1455,7 +1702,7 @@
                 >
               </div>
             {/if}
-            <CustomQuestions questions={customIn('auto')} bind:answers={customAnswers} {orders} {showMissing} />
+            <CustomQuestions kind={reportKind} questions={customIn('auto')} bind:answers={customAnswers} {orders} {showMissing} />
           </div>
         </div>
         <div class="section-footer">
@@ -1475,42 +1722,135 @@
           <Timer size={20} />
         </div>
         <div class="blocks packed">
-          <div class="blk" style="order:{orders.get('core:teleop.roles') ?? 0}">
+          <div class="blk" data-design-id="core:teleop.roles" style={blockStyle('teleop.roles', orders, layout)}>
             <section class="t-card" aria-labelledby="t-roles">
               <header class="t-head">
                 <h3 id="t-roles">{layout.label('teleop.roles', 'Observed roles')}</h3>
-                <span class="tag req">Required</span>
+                {#if layout.need('teleop.roles')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
               </header>
               {#if layout.help('teleop.roles')}<p class="field-help">{layout.help('teleop.roles')}</p>{/if}
               <div class="choice-grid role-grid" role="group" aria-labelledby="t-roles">
-                {#each TELEOP_ROLES as role}
-                  <button
-                    aria-pressed={teleopRoles.includes(role)}
-                    class:chosen={teleopRoles.includes(role)}
-                    on:click={() => toggleTeleopRole(role)}
-                    >{#if teleopRoles.includes(role)}<Check size={15} />{/if}{role}</button
-                  >
+                {#each layout.choices('teleop.roles', [...TELEOP_ROLES, 'none']) as role (role)}
+                  {#if role === 'none'}
+                    <button
+                      class="none-choice"
+                      aria-pressed={teleopRolesNone}
+                      class:chosen={teleopRolesNone}
+                      on:click={() => {
+                        teleopRoles = [];
+                        teleopRolesNone = true;
+                      }}>{#if teleopRolesNone}<Check size={15} />{/if}{say('teleop.roles', 'none')}</button
+                    >
+                  {:else}
+                    <button
+                      aria-pressed={teleopRoles.includes(role)}
+                      class:chosen={teleopRoles.includes(role)}
+                      on:click={() => toggleTeleopRole(role)}
+                      >{#if teleopRoles.includes(role)}<Check size={15} />{/if}{say('teleop.roles', role)}</button
+                    >
+                  {/if}
                 {/each}
-                <button
-                  class="none-choice"
-                  aria-pressed={teleopRolesNone}
-                  class:chosen={teleopRolesNone}
-                  on:click={() => {
-                    teleopRoles = [];
-                    teleopRolesNone = true;
-                  }}
-                  >{#if teleopRolesNone}<Check size={15} />{/if}None observed</button
-                >
               </div>
             </section>
           </div>
 
-          <div class="blk" style="order:{orders.get('core:teleop.balls') ?? 0}">
+          {#if playedDefense}
+            <div class="blk wide" data-design-id="core:teleop.defense" style={blockStyle('teleop.defense', orders, layout)}>
+              <section class="t-card defense-card" class:ph={$isPhone} aria-labelledby="t-defense">
+                <header class="t-head">
+                  <h3 id="t-defense">{layout.label('teleop.defense', 'Defense details')}</h3>
+                  {#if layout.need('teleop.defense')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
+                </header>
+{#if layout.help('teleop.defense')}<p class="field-help">{layout.help('teleop.defense')}</p>{/if}
+                <div class="def-sections">
+                  <div class="def-row">
+                    <span class="def-label" id="def-targets">Robots it defended</span>
+                    <div class="def-targets" role="group" aria-labelledby="def-targets">
+                      {#each defenseChoices as target (target)}
+                        {@const number = target.replace(/^frc/, '')}
+                        <button
+                          class="def-chip"
+                          aria-pressed={defenseTargets.includes(target)}
+                          class:chosen={defenseTargets.includes(target)}
+                          title={teamNames[number] || ''}
+                          on:click={() => (defenseTargets = toggleIn(defenseTargets, target))}
+                          >{#if defenseTargets.includes(target)}<Check size={14} />{/if}{number}</button
+                        >
+                      {/each}
+                      {#if !opponents.length && defenseTargets.length < 3}
+                        <form class="def-add" on:submit|preventDefault={addDefenseTarget}>
+                          <input
+                            class="form-input"
+                            autocapitalize="characters"
+                            placeholder={matchTeamsLoading ? 'Loading…' : 'Team #'}
+                            aria-label="Add a robot it defended"
+                            bind:value={defenseTargetInput}
+                          /><button
+                            type="submit"
+                            class="def-chip def-add-btn"
+                            aria-label="Add robot"
+                            disabled={!defenseTargetInput.trim()}><Plus size={15} /></button
+                          >
+                        </form>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="def-row">
+                    <span class="def-label" id="def-hub">When it defended</span>
+                    <div class="pill-bar" role="group" aria-labelledby="def-hub">
+                      {#each DEFENSE_PERIODS as period}
+                        <button
+                          aria-pressed={defensePeriods.includes(period)}
+                          class:chosen={defensePeriods.includes(period)}
+                          on:click={() => (defensePeriods = toggleIn(defensePeriods, period))}
+                          >{period === 'active' ? 'Hub active' : 'Hub inactive'}</button
+                        >
+                      {/each}
+                    </div>
+                    <div class="pill-bar" role="group" aria-label="Shifts it defended in">
+                      {#each MATCH_SHIFTS as shift (shift.key)}
+                        <button
+                          aria-pressed={defenseShifts.includes(shift.key)}
+                          aria-label={shift.label}
+                          class:chosen={defenseShifts.includes(shift.key)}
+                          on:click={() => (defenseShifts = toggleIn(defenseShifts, shift.key))}
+                          >{shift.key === 'endgame' ? 'Endgame' : shift.label}</button
+                        >
+                      {/each}
+                    </div>
+                  </div>
+                  <div class="def-row">
+                    <span class="def-label" id="def-rate"
+                      >Effectiveness{#if defenseEffectiveness}<b>{defenseEffectiveness}/{DEFENSE_EFFECTIVENESS_MAX}</b
+                        >{/if}</span
+                    >
+                    <div class="def-rate">
+                      <!-- Phones: two rows of five, so every number is a full-size tap target. -->
+                      {#each $isPhone ? [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]] : [Array.from({ length: DEFENSE_EFFECTIVENESS_MAX }, (_, index) => index + 1)] as row}
+                        <div class="pill-bar" role="group" aria-labelledby="def-rate">
+                          {#each row as value}
+                            <button
+                              aria-pressed={defenseEffectiveness === value}
+                              aria-label={`Defense effectiveness: ${value} of ${DEFENSE_EFFECTIVENESS_MAX}`}
+                              class:chosen={defenseEffectiveness === value}
+                              on:click={() => (defenseEffectiveness = toggleScale(defenseEffectiveness, value))}
+                              >{value}</button
+                            >
+                          {/each}
+                        </div>
+                      {/each}
+                      <div class="def-ends"><span>1 · No effect</span><span>10 · Shut them down</span></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          {/if}
+
+          <div class="blk" data-design-id="core:teleop.balls" style={blockStyle('teleop.balls', orders, layout)}>
             <section class="t-card balls-control">
               <header class="t-head">
-                <label for="balls-scored" class="t-title">{layout.label('teleop.balls', 'Balls scored')}</label><span
-                  class="tag req">Required</span
-                >
+                <label for="balls-scored" class="t-title">{layout.label('teleop.balls', 'Balls scored')}</label>{#if layout.need('teleop.balls')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
               </header>
               {#if layout.help('teleop.balls')}<p class="field-help">{layout.help('teleop.balls')}</p>{/if}
               <input
@@ -1540,23 +1880,28 @@
             </section>
           </div>
 
-          {#if !layout.hidden('teleop.notes')}
-            <div class="blk" style="order:{orders.get('core:teleop.notes') ?? 0}">
+          {#if !layout.hidden('teleop.notes') || playedDefense}
+            <div class="blk" data-design-id="core:teleop.notes" style={blockStyle('teleop.notes', orders, layout)}>
               <label class="notes-label scouter-notes"
                 ><span class="t-head"
-                  ><span class="t-title">{layout.label('teleop.notes', 'Real-scout observations')}</span><span
-                    class="tag">Optional</span
-                  ></span
-                ><textarea
+                  ><span class="t-title">{layout.label('teleop.notes', 'Real-scout observations')}</span
+                  >{#if playedDefense}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span
+                    >{/if}</span
+                >{#if playedDefense}<span class="defense-prompt"
+                    ><Shield size={15} /> This robot played defense. Describe it: how it defended (pinning, blocking lanes,
+                    guarding the hub), who it stopped, and how the robots it defended reacted.</span
+                  >{/if}<textarea
                   class="form-input"
                   rows="9"
-                  placeholder="What did the robot actually do? Note repeatable strengths, defense response, cycle consistency, field awareness, or anything the numbers miss."
+                  placeholder={playedDefense
+                    ? 'Describe the defense: what it did, against whom, and how well it worked.'
+                    : 'What did the robot actually do? Note repeatable strengths, defense response, cycle consistency, field awareness, or anything the numbers miss.'}
                   bind:value={teleopNotes}
                 ></textarea></label
               >
             </div>
           {/if}
-          <CustomQuestions questions={customIn('teleop')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('teleop')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -1579,12 +1924,12 @@
         </div>
         <div class="blocks packed">
           {#if !layout.hidden('shuttling.shuttled')}
-            <div class="blk" style="order:{orders.get('core:shuttling.shuttled') ?? 0}">
+            <div class="blk" data-design-id="core:shuttling.shuttled" style={blockStyle('shuttling.shuttled', orders, layout)}>
               <div class="t-card control-group" role="group" aria-labelledby="s-shuttled">
                 <header class="t-head">
                   <span id="s-shuttled" class="t-title"
                     >{layout.label('shuttling.shuttled', 'Did the robot shuttle fuel?')}</span
-                  ><span class="tag">Optional</span>
+                  >{#if layout.need('shuttling.shuttled')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                 </header>
                 {#if layout.help('shuttling.shuttled')}<p class="field-help">
                     {layout.help('shuttling.shuttled')}
@@ -1593,12 +1938,12 @@
                   <button
                     aria-pressed={shuttled === false}
                     class:chosen={shuttled === false}
-                    on:click={() => (shuttled = shuttled === false ? null : false)}>No</button
+                    on:click={() => (shuttled = shuttled === false ? null : false)}>{say('shuttling.shuttled', 'no')}</button
                   >
                   <button
                     aria-pressed={shuttled === true}
                     class:chosen={shuttled === true}
-                    on:click={() => (shuttled = shuttled === true ? null : true)}>Yes</button
+                    on:click={() => (shuttled = shuttled === true ? null : true)}>{say('shuttling.shuttled', 'yes')}</button
                   >
                 </div>
               </div>
@@ -1606,11 +1951,11 @@
           {/if}
           {#if shuttled}
             {#if !layout.hidden('shuttling.amount')}
-              <div class="blk" style="order:{orders.get('core:shuttling.amount') ?? 0}">
+              <div class="blk" data-design-id="core:shuttling.amount" style={blockStyle('shuttling.amount', orders, layout)}>
                 <section class="t-card balls-control">
                   <header class="t-head">
                     <label for="shuttle-band" class="t-title">{layout.label('shuttling.amount', 'Fuel shuttled')}</label
-                    ><span class="tag">Optional</span>
+                    >{#if layout.need('shuttling.amount')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                   </header>
                   {#if layout.help('shuttling.amount')}<p class="field-help">
                       {layout.help('shuttling.amount')}
@@ -1628,11 +1973,11 @@
               </div>
             {/if}
             {#if !layout.hidden('shuttling.rating')}
-              <div class="blk" style="order:{orders.get('core:shuttling.rating') ?? 0}">
+              <div class="blk" data-design-id="core:shuttling.rating" style={blockStyle('shuttling.rating', orders, layout)}>
                 <section class="t-card">
                   <header class="t-head">
                     <h3>{layout.label('shuttling.rating', 'Shuttling effectiveness')}</h3>
-                    <span class="tag">Optional</span>
+                    {#if layout.need('shuttling.rating')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                   </header>
                   {#if layout.help('shuttling.rating')}<p class="field-help">
                       {layout.help('shuttling.rating')}
@@ -1654,7 +1999,7 @@
               </div>
             {/if}
             {#if !layout.hidden('shuttling.notes')}
-              <div class="blk" style="order:{orders.get('core:shuttling.notes') ?? 0}">
+              <div class="blk" data-design-id="core:shuttling.notes" style={blockStyle('shuttling.notes', orders, layout)}>
                 <label class="notes-label"
                   >{layout.label('shuttling.notes', 'Shuttling notes')} (optional)<textarea
                     class="form-input"
@@ -1666,7 +2011,7 @@
               </div>
             {/if}
           {/if}
-          <CustomQuestions questions={customIn('shuttling')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('shuttling')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -1682,80 +2027,89 @@
             <span class="eyebrow">Performance scouting</span>
             <h2>How well they played</h2>
             <p>
-              Rate the shooting, driving and play, then rank the robots you watched. Tap a rating to set it and tap it
-              again to clear it if you could not judge it.
+              Rate the shooting, scoring rate, intake and driving, rank the robots you watched, and describe how they
+              played. Every answer is required.
             </p>
           </div>
           <Gauge size={20} />
         </div>
         <div class="blocks">
-          <div class="blk" style="order:{orders.get('core:teleop.ratings') ?? 0}">
+          <div class="blk" data-design-id="core:teleop.ratings" style={blockStyle('teleop.ratings', orders, layout)}>
             <section class="t-card">
-              <header class="t-head"><h3>{layout.label('teleop.ratings', 'Performance ratings')}</h3></header>
+              <header class="t-head">
+                <h3>{layout.label('teleop.ratings', 'Shot accuracy')}</h3>
+                {#if layout.need('teleop.ratings')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
+              </header>
               {#if layout.help('teleop.ratings')}<p class="field-help">{layout.help('teleop.ratings')}</p>{/if}
-              {#each TELEOP_RATING_FIELDS as field}
-                {@const labels =
-                  field === 'BPS' ? BPS_LABELS.map((label) => label.replace(' BPS', '')) : ACCURACY_LABELS}
-                <div class="scale-row">
-                  <span class="scale-name"
-                    >{field}{#if field === 'BPS'}
-                      <small>balls per second</small>{/if}</span
+              <div class="scale" role="group" aria-label="Shot accuracy">
+                {#each [1, 2, 3, 4, 5] as value}
+                  <button
+                    class="scale-btn"
+                    aria-pressed={ratings['Shot accuracy'] === value}
+                    aria-label={`Shot accuracy: ${value}, ${say('teleop.ratings', String(value))}`}
+                    class:chosen={ratings['Shot accuracy'] === value}
+                    on:click={() => toggleRating('Shot accuracy', value)}
+                    ><b>{value}</b><small>{say('teleop.ratings', String(value))}</small></button
                   >
-                  <div class="scale" role="group" aria-label={field}>
-                    {#each [1, 2, 3, 4, 5] as value}
-                      <button
-                        class="scale-btn"
-                        aria-pressed={ratings[field] === value}
-                        aria-label={`${field}: ${value}, ${(field === 'BPS' ? BPS_LABELS : ACCURACY_LABELS)[value - 1]}`}
-                        class:chosen={ratings[field] === value}
-                        on:click={() => toggleRating(field, value)}
-                        ><b>{value}</b><small>{labels[value - 1]}</small></button
-                      >
-                    {/each}
-                  </div>
-                </div>
-              {/each}
+                {/each}
+              </div>
             </section>
           </div>
 
-          {#if !layout.hidden('teleop.extraRatings')}
-            <div class="blk" style="order:{orders.get('core:teleop.extraRatings') ?? 0}">
-              <section class="t-card">
-                <header class="t-head">
-                  <h3>{layout.label('teleop.extraRatings', 'Additional ratings')}</h3>
-                  <span class="tag">Optional</span>
-                </header>
-                {#if layout.help('teleop.extraRatings')}<p class="field-help">
-                    {layout.help('teleop.extraRatings')}
-                  </p>{/if}
-                {#each MATCH_OPTIONAL_RATING_FIELDS as field}
-                  <div class="scale-row">
-                    <span class="scale-name">{field}</span>
-                    <div class="scale" role="group" aria-label={field}>
-                      {#each [1, 2, 3, 4, 5] as value}
-                        <button
-                          class="scale-btn"
-                          aria-pressed={ratings[field] === value}
-                          aria-label={`${field}: ${value} of 5`}
-                          class:chosen={ratings[field] === value}
-                          on:click={() => toggleRating(field, value)}
-                          ><b>{value}</b><small>{value === 1 ? 'poor' : value === 5 ? 'excellent' : '\u00a0'}</small
-                          ></button
-                        >
-                      {/each}
-                    </div>
-                  </div>
-                {/each}
-              </section>
-            </div>
-          {/if}
+          <div class="blk" data-design-id="core:performance.bps" style={blockStyle('performance.bps', orders, layout)}>
+            <section class="t-card">
+              <header class="t-head">
+                <label for="bps-slider" class="t-title">{layout.label('performance.bps', 'Balls per second')}</label>
+                {#if layout.need('performance.bps')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
+              </header>
+{#if layout.help('performance.bps')}<p class="field-help">{layout.help('performance.bps')}</p>{/if}
+              {#if layout.help('performance.bps')}<p class="field-help">{layout.help('performance.bps')}</p>{/if}
+              {#if $isPhone}
+                <div class="ph-bps">
+                  <button
+                    class="step-btn"
+                    aria-label="One less ball per second"
+                    disabled={!bps}
+                    on:click={() => (bps = Math.max(0, (bps ?? 0) - 1))}><Minus size={18} /></button
+                  >
+                  <output for="bps-slider" class="ph-bps-value"
+                    ><b>{bps === null ? '—' : bps >= BPS_SLIDER_MAX ? `${BPS_SLIDER_MAX}+` : bps}</b><small
+                      >balls / sec</small
+                    ></output
+                  >
+                  <button
+                    class="step-btn"
+                    aria-label="One more ball per second"
+                    disabled={bps !== null && bps >= BPS_SLIDER_MAX}
+                    on:click={() => (bps = Math.min(BPS_SLIDER_MAX, (bps ?? -1) + 1))}><Plus size={18} /></button
+                  >
+                </div>
+              {/if}
+              <div class="auto-points-slider" class:ph-bps-slider={$isPhone}>
+                <input
+                  id="bps-slider"
+                  type="range"
+                  min="0"
+                  max={BPS_SLIDER_MAX}
+                  step="1"
+                  value={bps ?? 0}
+                  aria-label="Balls per second"
+                  on:input={(event) => (bps = Number(event.currentTarget.value))}
+                />
+                {#if !$isPhone}<output for="bps-slider"
+                    >{bps === null ? '—' : bps >= BPS_SLIDER_MAX ? `${BPS_SLIDER_MAX}+` : bps} BPS</output
+                  >{/if}
+              </div>
+              {#if bps === null}<small class="estimate-result">Not set yet: move the slider, even to 0.</small>{/if}
+            </section>
+          </div>
 
           {#if !layout.hidden('teleop.intake')}
-            <div class="blk" style="order:{orders.get('core:teleop.intake') ?? 0}">
+            <div class="blk" data-design-id="core:teleop.intake" style={blockStyle('teleop.intake', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('teleop.intake', 'Intake speed')}</h3>
-                  <span class="tag">Optional</span>
+                  {#if layout.need('teleop.intake')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                 </header>
                 {#if layout.help('teleop.intake')}<p class="field-help">{layout.help('teleop.intake')}</p>{/if}
                 <div class="scale scale-3" role="group" aria-label="Intake speed">
@@ -1772,44 +2126,38 @@
               </section>
             </div>
           {/if}
-          {#each [['performance.driver', 'Driver skill', 'driver'], ['performance.offense', 'Offense rating', 'offense'], ['performance.defense', 'Defense rating', 'defense']] as [key, fallback, field] (key)}
-            {#if !layout.hidden(key)}
-              <div class="blk" style="order:{orders.get(`core:${key}`) ?? 0}">
-                <section class="t-card">
-                  <header class="t-head">
-                    <h3>{layout.label(key, fallback)}</h3>
-                    <span class="tag">Optional</span>
-                  </header>
-                  {#if layout.help(key)}<p class="field-help">{layout.help(key)}</p>{/if}
-                  <div class="scale" role="group" aria-label={layout.label(key, fallback)}>
-                    {#each [1, 2, 3, 4, 5] as value}
-                      {@const current =
-                        field === 'driver' ? driverSkill : field === 'offense' ? offenseRating : defenseRating}
-                      <button
-                        class="scale-btn"
-                        aria-pressed={current === value}
-                        aria-label={`${layout.label(key, fallback)}: ${value} of 5`}
-                        class:chosen={current === value}
-                        on:click={() => {
-                          if (field === 'driver') driverSkill = toggleScale(driverSkill, value);
-                          else if (field === 'offense') offenseRating = toggleScale(offenseRating, value);
-                          else defenseRating = toggleScale(defenseRating, value);
-                        }}
-                        ><b>{value}</b><small>{value === 1 ? 'poor' : value === 5 ? 'excellent' : '\u00a0'}</small
-                        ></button
-                      >
-                    {/each}
-                  </div>
-                </section>
-              </div>
-            {/if}
-          {/each}
+          {#if !layout.hidden('performance.driver')}
+            <div class="blk" data-design-id="core:performance.driver" style={blockStyle('performance.driver', orders, layout)}>
+              <section class="t-card">
+                <header class="t-head">
+                  <h3>{layout.label('performance.driver', 'Driver skill')}</h3>
+                  {#if layout.need('performance.driver')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
+                </header>
+                {#if layout.help('performance.driver')}<p class="field-help">
+                    {layout.help('performance.driver')}
+                  </p>{/if}
+                <div class="scale" role="group" aria-label={layout.label('performance.driver', 'Driver skill')}>
+                  {#each [1, 2, 3, 4, 5] as value}
+                    <button
+                      class="scale-btn"
+                      aria-pressed={driverSkill === value}
+                      aria-label={`${layout.label('performance.driver', 'Driver skill')}: ${value} of 5`}
+                      class:chosen={driverSkill === value}
+                      on:click={() => (driverSkill = toggleScale(driverSkill, value))}
+                      ><b>{value}</b><small>{value === 1 ? 'poor' : value === 5 ? 'excellent' : '\u00a0'}</small
+                      ></button
+                    >
+                  {/each}
+                </div>
+              </section>
+            </div>
+          {/if}
           {#if !layout.hidden('performance.ranking')}
-            <div class="blk" style="order:{orders.get('core:performance.ranking') ?? 0}">
+            <div class="blk" data-design-id="core:performance.ranking" style={blockStyle('performance.ranking', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('performance.ranking', 'Power ranking')}</h3>
-                  <span class="tag">Optional</span>
+                  {#if layout.need('performance.ranking')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                 </header>
                 {#if layout.help('performance.ranking')}<p class="field-help">
                     {layout.help('performance.ranking')}
@@ -1827,9 +2175,9 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.notes')}
-            <div class="blk" style="order:{orders.get('core:performance.notes') ?? 0}">
+            <div class="blk" data-design-id="core:performance.notes" style={blockStyle('performance.notes', orders, layout)}>
               <label class="notes-label"
-                >{layout.label('performance.notes', 'Notes about performance')} (optional)<textarea
+                >{layout.label('performance.notes', 'Notes about performance')} (required)<textarea
                   class="form-input"
                   rows="5"
                   placeholder="What stood out about how they played: strengths, mistakes, strategy, how they reacted to defense."
@@ -1838,7 +2186,7 @@
               >
             </div>
           {/if}
-          <CustomQuestions questions={customIn('performance')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('performance')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -1857,40 +2205,74 @@
           <Wrench size={20} />
         </div>
         <div class="blocks">
-          <div class="blk" style="order:{orders.get('core:teleop.status') ?? 0}">
+          <div class="blk" data-design-id="core:teleop.status" style={blockStyle('teleop.status', orders, layout)}>
             <div class="t-card control-group" role="group" aria-labelledby="t-status">
               <header class="t-head">
-                <span id="t-status" class="t-title">{layout.label('teleop.status', 'Robot status')}</span><span
-                  class="tag req">Required</span
-                >
+                <span id="t-status" class="t-title">{layout.label('teleop.status', 'Robot status')}</span>{#if layout.need('teleop.status')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
               </header>
-              <div class="choice-grid status-choice-grid">
-                {#each [['active', 'Active'], ['dead', 'Dead'], ['stopped', 'Stopped']] as [status, label]}<button
-                    class="status-choice status-{status}"
-                    aria-pressed={teleopRobotStatus === status}
-                    class:chosen={teleopRobotStatus === status}
-                    on:click={() => (teleopRobotStatus = status)}>{label}</button
-                  >{/each}
-              </div>
+{#if layout.help('teleop.status')}<p class="field-help">{layout.help('teleop.status')}</p>{/if}
+              {#if layout.help('teleop.status')}<p class="field-help">{layout.help('teleop.status')}</p>{/if}
+              {#if $isPhone}
+                <div class="ph-shift-status">
+                  {#each MATCH_SHIFTS as shift (shift.key)}
+                    <span class="shift-name"
+                      >{shift.key === 'endgame' ? 'End' : shift.label.replace('Shift ', 'S')}</span
+                    >
+                    <div class="pill-bar status-bar" role="group" aria-label={`Robot status, ${shift.label}`}>
+                      {#each layout.choices('teleop.status', ['active', 'dead', 'stopped']) as status}<button
+                          class="status-{status}"
+                          aria-pressed={robotShiftStatus[shift.key] === status}
+                          class:chosen={robotShiftStatus[shift.key] === status}
+                          on:click={() => (robotShiftStatus = { ...robotShiftStatus, [shift.key]: status })}
+                          >{say('teleop.status', status)}</button
+                        >{/each}
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <div class="shift-status-list">
+                  {#each MATCH_SHIFTS as shift (shift.key)}
+                    <div class="shift-status-row" role="group" aria-label={`Robot status, ${shift.label}`}>
+                      <span class="shift-name">{shift.label}</span>
+                      <div class="choice-grid status-choice-grid">
+                        {#each layout.choices('teleop.status', ['active', 'dead', 'stopped']) as status}<button
+                            class="status-choice status-{status}"
+                            aria-pressed={robotShiftStatus[shift.key] === status}
+                            class:chosen={robotShiftStatus[shift.key] === status}
+                            on:click={() => (robotShiftStatus = { ...robotShiftStatus, [shift.key]: status })}
+                            >{say('teleop.status', status)}</button
+                          >{/each}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+              {#if !MATCH_SHIFTS.some((shift) => robotShiftStatus[shift.key])}
+                <button
+                  class="btn btn-sm all-active"
+                  on:click={() =>
+                    (robotShiftStatus = Object.fromEntries(MATCH_SHIFTS.map((shift) => [shift.key, 'active'])))}
+                  >Active the whole match</button
+                >
+              {/if}
             </div>
           </div>
-          <div class="blk" style="order:{orders.get('core:teleop.crash') ?? 0}">
+          <div class="blk" data-design-id="core:teleop.crash" style={blockStyle('teleop.crash', orders, layout)}>
             <div class="t-card control-group" role="group" aria-labelledby="t-crash">
               <header class="t-head">
-                <span id="t-crash" class="t-title">{layout.label('teleop.crash', 'Significant crash')}</span><span
-                  class="tag req">Required</span
-                >
+                <span id="t-crash" class="t-title">{layout.label('teleop.crash', 'Significant crash')}</span>{#if layout.need('teleop.crash')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
               </header>
+{#if layout.help('teleop.crash')}<p class="field-help">{layout.help('teleop.crash')}</p>{/if}
               <div class="segmented big">
                 <button
                   aria-pressed={significantCrash === false}
                   class:chosen={significantCrash === false}
-                  on:click={() => (significantCrash = false)}>No</button
+                  on:click={() => (significantCrash = false)}>{say('teleop.crash', 'no')}</button
                 >
                 <button
                   aria-pressed={significantCrash === true}
                   class:chosen={significantCrash === true}
-                  on:click={() => (significantCrash = true)}>Yes</button
+                  on:click={() => (significantCrash = true)}>{say('teleop.crash', 'yes')}</button
                 >
               </div>
               {#if significantCrash}
@@ -1898,7 +2280,8 @@
                   >Crash target (required)
                   <Select class="form-input" bind:value={crashTarget}>
                     <option value="">Choose target</option>
-                    {#each ['robot', 'wall', 'field element', 'other'] as target}<option value={target}>{target}</option
+                    {#each layout.choices('teleop.crash', ['robot', 'wall', 'field element', 'other']) as target}<option value={target}
+                        >{say('teleop.crash', target)}</option
                       >{/each}
                   </Select>
                 </label>
@@ -1913,23 +2296,24 @@
             </div>
           </div>
           {#if !layout.hidden('auto.collision')}
-            <div class="blk" style="order:{orders.get('core:auto.collision') ?? 0}">
+            <div class="blk" data-design-id="core:auto.collision" style={blockStyle('auto.collision', orders, layout)}>
               <div class="t-card control-group" role="group" aria-labelledby="r-collision">
                 <header class="t-head">
                   <span id="r-collision" class="t-title"
                     >{layout.label('auto.collision', 'Any collision during auto?')}</span
-                  ><span class="tag">Optional</span>
+                  >{#if layout.need('auto.collision')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                 </header>
+{#if layout.help('auto.collision')}<p class="field-help">{layout.help('auto.collision')}</p>{/if}
                 <div class="segmented big">
                   <button
                     aria-pressed={!autoCollision}
                     class:chosen={!autoCollision}
-                    on:click={() => (autoCollision = false)}>No</button
+                    on:click={() => (autoCollision = false)}>{say('auto.collision', 'no')}</button
                   >
                   <button
                     aria-pressed={autoCollision}
                     class:chosen={autoCollision}
-                    on:click={() => (autoCollision = true)}>Yes</button
+                    on:click={() => (autoCollision = true)}>{say('auto.collision', 'yes')}</button
                   >
                 </div>
                 {#if autoCollision}
@@ -1945,7 +2329,7 @@
             </div>
           {/if}
           {#if !layout.hidden('robot.intakeJammed')}
-            <div class="blk" style="order:{orders.get('core:robot.intakeJammed') ?? 0}">
+            <div class="blk" data-design-id="core:robot.intakeJammed" style={blockStyle('robot.intakeJammed', orders, layout)}>
               <label class="incident-toggle"
                 ><input type="checkbox" bind:checked={intakeJammed} /><span
                   ><AlertTriangle size={17} />
@@ -1955,37 +2339,33 @@
             </div>
           {/if}
           {#if !layout.hidden('postmatch.cards')}
-            <div class="blk" style="order:{orders.get('core:postmatch.cards') ?? 0}">
+            <div class="blk" data-design-id="core:postmatch.cards" style={blockStyle('postmatch.cards', orders, layout)}>
               <div class="post-grid outcome-panel">
                 <fieldset>
                   <legend>{layout.label('postmatch.cards', 'Cards')}</legend>
+{#if layout.help('postmatch.cards')}<p class="field-help">{layout.help('postmatch.cards')}</p>{/if}
                   <div class="choice-grid card-choice-grid">
-                    <button
-                      class="card-choice card-none"
-                      class:chosen={card === 'none'}
-                      on:click={() => (card = 'none')}><i class="card-swatch" aria-hidden="true"></i>None</button
-                    ><button
-                      class="card-choice card-yellow"
-                      class:chosen={card === 'yellow'}
-                      on:click={() => (card = 'yellow')}><i class="card-swatch" aria-hidden="true"></i>Yellow</button
-                    ><button class="card-choice card-red" class:chosen={card === 'red'} on:click={() => (card = 'red')}
-                      ><i class="card-swatch" aria-hidden="true"></i>Red</button
-                    >
+                    {#each layout.choices('postmatch.cards', ['none', 'yellow', 'red']) as choice (choice)}<button
+                        class="card-choice card-{choice}"
+                        class:chosen={card === choice}
+                        on:click={() => (card = choice)}
+                        ><i class="card-swatch" aria-hidden="true"></i>{say('postmatch.cards', choice)}</button
+                      >{/each}
                   </div>
                 </fieldset>
               </div>
             </div>
           {/if}
           {#if !layout.hidden('robot.fouls')}
-            <div class="blk" style="order:{orders.get('core:robot.fouls') ?? 0}">
+            <div class="blk" data-design-id="core:robot.fouls" style={blockStyle('robot.fouls', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('robot.fouls', 'Fouls')}</h3>
-                  <span class="tag">Optional</span>
+                  {#if layout.need('robot.fouls')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}
                 </header>
                 {#if layout.help('robot.fouls')}<p class="field-help">{layout.help('robot.fouls')}</p>{/if}
                 <div class="foul-grid">
-                  {#each [['minor', 'Minor fouls'], ['major', 'Major fouls']] as [kind, label] (kind)}
+                  {#each [['minor', say('robot.fouls', 'minor')], ['major', say('robot.fouls', 'major')]] as [kind, label] (kind)}
                     {@const value = kind === 'minor' ? foulsMinor : foulsMajor}
                     <div class="stepper" role="group" aria-label={label}>
                       <span class="stepper-label">{label}</span>
@@ -2023,15 +2403,36 @@
                     </div>
                   {/each}
                 </div>
+                {#if hasFouls}
+                  <label class="foul-nature"
+                    >Nature of the foul (required)
+                    <Select class="form-input" bind:value={foulNature}>
+                      <option value="">Choose what the foul was for</option>
+                      {#each layout.choices('robot.fouls', FOUL_NATURES) as nature}<option value={nature}
+                          >{say('robot.fouls', nature)}</option
+                        >{/each}
+                    </Select>
+                  </label>
+                  <label class="foul-nature"
+                    >{foulNature === 'Other' ? 'Describe the foul (required)' : 'Foul details (optional)'}<textarea
+                      class="form-input"
+                      rows="2"
+                      maxlength="2000"
+                      placeholder="What happened, and when in the match?"
+                      bind:value={foulDetails}
+                    ></textarea></label
+                  >
+                {/if}
               </section>
             </div>
           {/if}
-          <div class="blk" style="order:{orders.get('core:postmatch.break') ?? 0}">
+          <div class="blk" data-design-id="core:postmatch.break" style={blockStyle('postmatch.break', orders, layout)}>
             <div class="post-grid outcome-panel">
               <fieldset>
-                <legend>{layout.label('postmatch.break', 'Mechanical break')} (required)</legend>
+                <legend>{layout.label('postmatch.break', 'Mechanical break')}{#if layout.need('postmatch.break')} (required){/if}</legend>
+{#if layout.help('postmatch.break')}<p class="field-help">{layout.help('postmatch.break')}</p>{/if}
                 <div class="segmented">
-                  <button class:chosen={mechanicalBreak === false} on:click={() => (mechanicalBreak = false)}>No</button
+                  <button class:chosen={mechanicalBreak === false} on:click={() => (mechanicalBreak = false)}>{say('postmatch.break', 'no')}</button
                   ><button class:chosen={mechanicalBreak === true} on:click={() => (mechanicalBreak = true)}
                     >Yes — pit crew report required</button
                   >
@@ -2039,8 +2440,8 @@
               </fieldset>
             </div>
           </div>
-          {#if !layout.hidden('robot.breaks')}
-            <div class="blk" style="order:{orders.get('core:robot.breaks') ?? 0}">
+          {#if !layout.hidden('robot.breaks') || mechanicalBreak === true}
+            <div class="blk" data-design-id="core:robot.breaks" style={blockStyle('robot.breaks', orders, layout)}>
               <section
                 class="t-card breaks-card"
                 class:emphasis={mechanicalBreak === true ||
@@ -2050,11 +2451,13 @@
               >
                 <header class="t-head">
                   <h3>{layout.label('robot.breaks', 'What broke and how the team handled it')}</h3>
-                  <span class="tag">Optional</span>
+                  {#if mechanicalBreak === true}{#if layout.need('robot.breaks')}<span class="tag req">Required</span>{:else}<span class="tag">Optional</span>{/if}{:else}<span class="tag"
+                      >Optional</span
+                    >{/if}
                 </header>
                 {#if layout.help('robot.breaks')}<p class="field-help">{layout.help('robot.breaks')}</p>{/if}
                 <label
-                  >What broke<textarea
+                  >What broke{mechanicalBreak === true ? ' (required)' : ''}<textarea
                     class="form-input"
                     rows="2"
                     maxlength="2000"
@@ -2084,7 +2487,7 @@
             </div>
           {/if}
           {#if !layout.hidden('postmatch.beached')}
-            <div class="blk" style="order:{orders.get('core:postmatch.beached') ?? 0}">
+            <div class="blk" data-design-id="core:postmatch.beached" style={blockStyle('postmatch.beached', orders, layout)}>
               <label class="incident-toggle"
                 ><input type="checkbox" bind:checked={beached} /><span
                   ><AlertTriangle size={17} /> {layout.label('postmatch.beached', 'Robot became beached')}</span
@@ -2092,7 +2495,7 @@
               >
             </div>
           {/if}
-          <div class="blk" style="order:{orders.get('core:postmatch.problem') ?? 0}">
+          <div class="blk" data-design-id="core:postmatch.problem" style={blockStyle('postmatch.problem', orders, layout)}>
             {#if requiresPitReport}
               <div class="required-handoff">
                 <AlertTriangle size={17} /><span
@@ -2119,7 +2522,7 @@
               >
             {/if}
           </div>
-          <CustomQuestions questions={customIn('robot')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('robot')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -2139,7 +2542,7 @@
         </div>
         <div class="blocks packed">
           {#if !layout.hidden('postmatch.notes')}
-            <div class="blk" style="order:{orders.get('core:postmatch.notes') ?? 0}">
+            <div class="blk" data-design-id="core:postmatch.notes" style={blockStyle('postmatch.notes', orders, layout)}>
               <label class="notes-label scouter-notes"
                 >{layout.label('postmatch.notes', 'Post-match scout notes')} (optional)<textarea
                   class="form-input"
@@ -2150,7 +2553,7 @@
               >
             </div>
           {/if}
-          <CustomQuestions questions={customIn('postmatch')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('postmatch')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         <div class="section-footer">
           <button class="btn" on:click={() => selectPhase(phaseBefore('postmatch'))}>Back</button><button
@@ -2172,6 +2575,35 @@
 </main>
 
 <style>
+  /* Design mode (the form designer's canvas): every question is selectable and draggable. */
+  .design-mode :global([data-design-id]) {
+    cursor: pointer;
+    outline: 1px dashed transparent;
+    outline-offset: 3px;
+    border-radius: var(--radius-md);
+    transition: outline-color 0.12s ease;
+  }
+  .design-mode :global([data-design-id]:hover) {
+    outline-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  .design-mode :global([data-design-id].design-selected) {
+    outline: 2px solid var(--accent);
+  }
+  .design-mode :global([data-design-id].design-over) {
+    box-shadow: -4px 0 0 var(--accent);
+  }
+  /* The in-place rename box (double-click a title or an answer). */
+  :global(.design-rename) {
+    position: fixed;
+    z-index: 1000;
+    padding: 2px 6px;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-lg);
+    outline: none;
+  }
   .report-row-actions {
     display: flex;
     flex-wrap: wrap;
@@ -2636,12 +3068,6 @@
     font-size: 0.92rem;
     font-weight: 500;
   }
-  .scale-name small {
-    display: block;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 400;
-  }
   .scale {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3048,33 +3474,262 @@
   .submitted-state {
     background: var(--surface-2);
   }
-  .training-banner {
+  /* defense details (Data), per-shift robot status and foul nature (Robot). */
+  .defense-card {
+    display: grid;
+    gap: var(--space-3);
+  }
+  /* Defense details span the whole row: who it defended, when, and how well, side by side when there is room and
+     stacked when there isn't. Each has its label above it. */
+  .blocks.packed > .blk.wide {
+    grid-column: 1 / -1;
+  }
+  .def-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-4) var(--space-5);
+    align-items: start;
+  }
+  .def-row {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+    min-width: 0;
+  }
+  .def-label {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    justify-content: space-between;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .def-label b {
+    color: var(--text-strong, var(--text));
+    font-size: 0.95rem;
+    letter-spacing: 0;
+  }
+  .def-targets {
     display: flex;
     flex-wrap: wrap;
+    gap: 0.4rem;
     align-items: center;
-    gap: var(--gap-3);
-    margin-bottom: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--brand-gold-strong);
-    background: var(--brand-gold-soft);
   }
-  .training-banner > div {
-    display: grid;
-    flex: 1;
-    min-width: 12rem;
-  }
-  .training-banner span {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-  .training-banner .btn {
+  .def-chip {
     display: inline-flex;
+    gap: 0.25rem;
     align-items: center;
+    justify-content: center;
+    min-width: 4.5rem;
+    height: 2.75rem;
+    padding: 0 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-1);
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .def-chip.chosen {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-1));
+    color: var(--text-strong, var(--text));
+  }
+  .def-add {
+    display: inline-flex;
+    gap: 0.3rem;
+    margin: 0;
+  }
+  .def-add .form-input {
+    width: 7.5rem;
+    height: 2.75rem;
+    min-height: 0;
+    border-radius: 999px;
+  }
+  .def-add-btn {
+    min-width: 2.75rem;
+    padding: 0;
+  }
+  .def-add-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  /* A joined row of equal segments: one control, not a wall of separate boxes. */
+  .pill-bar {
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .pill-bar button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 2.75rem;
+    padding: 0 0.25rem;
+    border: 0;
+    border-left: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text);
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .pill-bar button:first-child {
+    border-left: 0;
+  }
+  .pill-bar button.chosen {
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-1));
+    box-shadow: inset 0 0 0 1px var(--accent);
+    color: var(--text-strong, var(--text));
+    font-weight: 650;
+  }
+  /* Phones: labels above each control and thumb-size segments. */
+  .defense-card.ph .def-row {
+    grid-template-columns: 1fr;
     gap: 0.35rem;
   }
-  .training-banner .muted {
-    font-size: 0.8rem;
+  .defense-card.ph .def-label {
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+  }
+  .defense-card.ph .pill-bar button,
+  .defense-card.ph .def-chip,
+  .defense-card.ph .def-add .form-input {
+    height: var(--tap-comfort);
+  }
+  .defense-card.ph .def-chip {
+    flex: 1 1 5rem;
+  }
+  .defense-card.ph .def-add {
+    flex: 1 1 100%;
+  }
+  .defense-card.ph .def-add .form-input {
+    flex: 1;
+    width: auto;
+  }
+  .defense-card.ph .def-add-btn {
+    flex: 0 0 var(--tap-comfort);
+  }
+  .ph-bps {
+    display: grid;
+    grid-template-columns: var(--tap-comfort) minmax(0, 1fr) var(--tap-comfort);
+    gap: var(--gap-2);
+    align-items: center;
+  }
+  .ph-bps .step-btn {
+    display: grid;
+    place-items: center;
+    width: var(--tap-comfort);
+    height: var(--tap-comfort);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .ph-bps .step-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .ph-bps-value {
+    display: grid;
+    justify-items: center;
+  }
+  .ph-bps-value b {
+    font-size: 2rem;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .ph-bps-value small {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .ph-bps-slider input[type='range'] {
+    height: var(--tap-comfort);
+  }
+  .ph-shift-status {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    gap: 0.4rem var(--gap-2);
+    align-items: center;
+  }
+  .ph-shift-status .pill-bar button {
+    height: var(--tap-comfort);
+  }
+  .status-bar button.chosen.status-dead,
+  .status-bar button.chosen.status-stopped {
+    background: var(--red-soft);
+    box-shadow: inset 0 0 0 1px var(--red-base);
+    color: var(--text);
+  }
+  .def-rate {
+    display: grid;
+    gap: 0.2rem;
+  }
+  .def-ends {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.15rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .defense-prompt {
+    display: flex;
+    gap: 0.4rem;
+    align-items: flex-start;
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .shift-status-list {
+    display: grid;
+    gap: var(--gap-2);
+  }
+  .shift-status-row {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: var(--gap-2);
+    align-items: center;
+  }
+  .shift-status-row .choice-grid {
+    margin-top: 0;
+  }
+  .shift-name {
+    font-weight: 600;
+  }
+  .all-active {
+    justify-self: start;
+    margin-top: var(--space-2);
+  }
+  .foul-nature {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: var(--space-3);
+    font-weight: 600;
+  }
+  @media (max-width: 480px) {
+    .def-row {
+      grid-template-columns: 1fr;
+      gap: 0.3rem;
+    }
+    .def-label {
+      display: flex;
+      gap: 0.4rem;
+      align-items: baseline;
+    }
+    .shift-status-row {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
   }
   .foul-grid {
     display: grid;
@@ -3170,8 +3825,10 @@
     align-items: center;
     margin: 0 0 0 auto;
   }
+  /* The select sizes to the event name, so "2026mttd — 2026 MadTown Throwdown (active)" stays on one line. */
   .page-header .competition-picker {
-    grid-template-columns: auto minmax(14rem, 22rem);
+    grid-template-columns: auto minmax(14rem, max-content);
+    white-space: nowrap;
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
@@ -3180,12 +3837,33 @@
   /* Each phase's cards sit on an aligned grid of at most four columns. Cards in a row share one height, and
      a card's controls sit at its bottom so button rows line up across the row. Cards holding several ratings
      span two rows; the power ranking, notes, fouls and breaks span two columns. Pre-match stays one column. */
+  /* A 12-column grid, the same one the form designer draws. A card the designer gave a width spans that many columns;
+     the rest take a quarter, a third or half of the row as the space allows, and everything stacks when narrow. */
   .blocks.packed {
+    --default-span: 3;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(max(22rem, calc((100% - 3 * var(--gap-4)) / 4)), 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     grid-auto-flow: row dense;
     gap: var(--gap-4);
     align-items: stretch;
+  }
+  .blocks.packed > :global(*) {
+    grid-column: span var(--span, var(--default-span));
+  }
+  @container (max-width: 90rem) {
+    .blocks.packed {
+      --default-span: 4;
+    }
+  }
+  @container (max-width: 66rem) {
+    .blocks.packed {
+      --default-span: 6;
+    }
+  }
+  @container (max-width: 44rem) {
+    .blocks.packed > :global(*) {
+      grid-column: 1 / -1;
+    }
   }
   .blocks.packed > :global(*) {
     margin: 0;
@@ -3235,7 +3913,7 @@
   }
   /* Auto has three columns: the two short questions stack in the first, beside the points and fuel-source cards. */
   .auto-controls.blocks.packed {
-    grid-template-columns: repeat(auto-fit, minmax(max(22rem, calc((100% - 2 * var(--gap-4)) / 3)), 1fr));
+    --default-span: 4;
   }
   .blocks.packed .balls-control,
   .blocks.packed .balls-control .form-input {
@@ -3669,7 +4347,7 @@
     }
   }
 
-  /* Phone layout (#124). The page sits on the app's own gutter, the stages are one thin row that
+  /* Phone layout. The page sits on the app's own gutter, the stages are one thin row that
      stays under the header, and each stage's Back / Continue bar docks above the bottom bar so the
      next step is always under the thumb. */
   @media (max-width: 768px) {
@@ -3785,7 +4463,7 @@
     }
   }
 
-  /* Phone header (#124) */
+  /* Phone header */
   .ph-scout {
     display: grid;
     gap: var(--space-2);
@@ -3853,7 +4531,7 @@
     font-size: 0.85rem;
   }
 
-  /* Phone, compact (#124): as much of each stage on screen as possible. Smaller kind switch and
+  /* Phone, compact: as much of each stage on screen as possible. Smaller kind switch and
      stage row, no descriptions, two fields per row where they fit, and the stage's action docked. */
   @media (max-width: 900px) {
     .ph-scout {
@@ -4020,7 +4698,7 @@
     }
   }
 
-  /* Phone: one bar for kind + stage (#124) */
+  /* Phone: one bar for kind + stage */
   @media (max-width: 900px) {
     .toolbar .kind-tabs,
     .stage-nav {
@@ -4130,7 +4808,7 @@
     color: var(--text-muted);
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .ph-stage-name {
       white-space: normal;

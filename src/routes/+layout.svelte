@@ -3,6 +3,8 @@
   import '../competition.css';
   import '../calm.css';
   import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import { afterNavigate, goto } from '$app/navigation';
@@ -10,12 +12,15 @@
   import { applyTeamDefaultTheme, theme } from '$lib/stores/theme.js';
   import { setTeam, team } from '$lib/stores/team.js';
   import { brandCssVars } from '$lib/app/teamSettings.js';
+  import { appearanceCssVars } from '$lib/app/appearance.js';
+  import { showTeamTabIcon } from '$lib/app/tabIcon.js';
   import TeamMark from '$lib/components/common/TeamMark.svelte';
   import { supabaseConfigured } from '$lib/app/supabaseConfig.js';
   import { dev } from '$app/environment';
   import { activeEventKey, primeActiveEvent, refreshActiveEvent } from '$lib/stores/activeEvent.js';
   import { displayEventCode } from '$lib/scouting/eventCode.js';
   import ConfirmationDialog from '$lib/components/common/ConfirmationDialog.svelte';
+  import SiteSearch from '$lib/components/common/SiteSearch.svelte';
   import { watchTables } from '$lib/ui/responsiveTables.js';
   import {
     BOTTOM_BAR_LABELS,
@@ -29,14 +34,13 @@
     ArrowUpDown,
     CalendarClock,
     CalendarDays,
+    ChevronDown,
     ClipboardCheck,
     ClipboardList,
     Database,
-    Dice5,
     Eye,
     Gamepad2,
     Globe,
-    GraduationCap,
     House,
     LayoutDashboard,
     ListChecks,
@@ -69,11 +73,9 @@
     ClipboardCheck,
     ClipboardList,
     Database,
-    Dice5,
     Eye,
     Gamepad2,
     Globe,
-    GraduationCap,
     House,
     LayoutDashboard,
     ListChecks,
@@ -106,15 +108,42 @@
       .join(' ')} }`;
   $: brandStyle = $team
     ? [
-        cssBlock('html:root[data-theme="modern"]', brandCssVars($team.brandColor, 'modern')),
-        cssBlock('html:root[data-theme="modern-dark"]', brandCssVars($team.brandColor, 'modern-dark'))
+        cssBlock('html:root:root[data-theme="modern"]', {
+          ...appearanceCssVars($team.appearance, 'modern', $team.brandColor),
+          ...brandCssVars($team.brandColor, 'modern')
+        }),
+        cssBlock('html:root:root[data-theme="modern-dark"]', {
+          ...appearanceCssVars($team.appearance, 'modern-dark', $team.brandColor),
+          ...brandCssVars($team.brandColor, 'modern-dark')
+        })
       ].join('\n')
     : '';
   $: appName = $team?.appName || 'Scouting';
+  // The app name with its last word set in the serif accent, like the Hub's brand.
+  $: brandWords = $team?.appearance?.serifAccent === false ? [appName] : String(appName).trim().split(/\s+/);
+  $: brandHead = brandWords.length > 1 ? `${brandWords.slice(0, -1).join(' ')} ` : appName;
+  $: brandTail = brandWords.length > 1 ? brandWords.at(-1) : '';
 
   const RAIL_STORAGE_KEY = 'scouting-rail-collapsed';
   let collapsed = false;
   let menuOpen = false;
+  // Folding animations are skipped for people who ask for reduced motion.
+  const motionMs = (ms) => (browser && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms);
+  let searchOpen = false;
+  // Menu groups someone folded away (kept on this device). Every group starts open.
+  const CLOSED_GROUPS_KEY = 'scouting-closed-groups';
+  let closedGroups = [];
+  const groupHasCurrent = (group) => group.items.some((item) => item.key === current?.key);
+  function toggleGroup(key) {
+    closedGroups = closedGroups.includes(key) ? closedGroups.filter((k) => k !== key) : [...closedGroups, key];
+    try {
+      localStorage.setItem(CLOSED_GROUPS_KEY, JSON.stringify(closedGroups));
+    } catch {
+      /* storage can be unavailable */
+    }
+  }
+  // Ctrl on Windows and Linux, the Command key on Apple devices.
+  let modKey = 'Ctrl';
   let stageEl;
   // A short fade-up on the page area whenever the route changes. Restarted by toggling
   // the class rather than re-creating the page, so nested layouts keep their state.
@@ -176,6 +205,7 @@
   }
 
   $: pathname = $page.url.pathname;
+  $: designFrame = $page.url.searchParams.get('design') === '1';
   // The page that shows no site chrome and needs no sign-in: the login form.
   $: isLogin = pathname === '/login';
   $: canAdmin = canAdministerScouting($userProfile);
@@ -183,6 +213,12 @@
   // The phone bar follows the person's competition role (see bottomBarKeys).
   $: bottomItems = bottomBarItems($userProfile?.roster_keys || [], $team?.hiddenFeatures || []);
   $: current = activeItem(pathname, true);
+  // Everything the search can open: Home, every page in this person's menu, and Account.
+  $: searchPages = [
+    { key: 'home', label: 'Home', href: '/', blurb: 'Next match, assignments and coverage', group: '' },
+    ...groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label }))),
+    { key: 'account', label: 'Account', href: '/account', blurb: 'Your name, theme and password', group: '' }
+  ];
   // Pages outside the menu (Quick Scout, Note Scout, ...) are named from their address, not called Home.
   const PAGE_TITLES = {
     quickscout: 'Quick Scout',
@@ -202,9 +238,15 @@
     void goto(`/login?next=${encodeURIComponent(pathname + $page.url.search)}`, { replaceState: true });
   }
 
+  // The browser tab shows the team's chosen icon (Team settings > Browser tab icon).
+  $: if (browser) showTeamTabIcon($team);
+
   onMount(() => {
+    modKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
     try {
       collapsed = localStorage.getItem(RAIL_STORAGE_KEY) === '1';
+      const saved = JSON.parse(localStorage.getItem(CLOSED_GROUPS_KEY) || '[]');
+      closedGroups = Array.isArray(saved) ? saved.filter((key) => typeof key === 'string') : [];
     } catch {
       /* storage can be unavailable */
     }
@@ -261,13 +303,18 @@
   <slot />
 {:else if !$authReady || !$user}
   <div class="boot" role="status">Loading {appName}...</div>
+{:else if designFrame}
+  <!-- Inside the form designer (Scouting Admin > Edit): just the page, as a scout sees it, without the menu. -->
+  <main class="design-frame"><slot /></main>
 {:else}
   <div class="shell" class:collapsed>
     <aside class="rail" aria-label="Main navigation">
       <div class="brand-row">
         <a class="brand" href="/" title={appName}>
           <TeamMark size={34} />
-          <span class="brand-text">{appName}</span>
+          <span class="brand-text"
+            >{brandHead}{#if brandTail}<span class="serif-accent">{brandTail}</span>{/if}</span
+          >
         </a>
         <button
           type="button"
@@ -281,25 +328,40 @@
         </button>
       </div>
 
+      <button
+        type="button"
+        class="rail-search"
+        on:click={() => (searchOpen = true)}
+        title={collapsed ? 'Search (Ctrl K)' : undefined}
+        aria-label="Search pages and teams"><Search size={16} /><span>Search</span><kbd>{modKey} K</kbd></button
+      >
+
       <nav class="rail-nav">
         <a class="rail-home" class:active={isActive(pathname, '/')} href="/" title={collapsed ? 'Home' : undefined}
           ><House size={18} /><span>Home</span></a
         >
         {#each groups as group (group.key)}
-          <div class="rail-group">
-            <p class="rail-label">{group.label}</p>
-            {#each group.items as item (item.key)}
-              <a
-                class="rail-link"
-                class:active={current?.key === item.key}
-                href={item.href}
-                title={collapsed ? item.label : item.blurb}
-                aria-label={item.label}
-              >
-                <svelte:component this={ICONS[item.icon]} size={18} />
-                <span>{item.label}</span>
-              </a>
-            {/each}
+          {@const folded = !collapsed && closedGroups.includes(group.key) && !groupHasCurrent(group)}
+          <div class="rail-group" class:folded>
+            <button type="button" class="rail-label" aria-expanded={!folded} on:click={() => toggleGroup(group.key)}
+              ><span>{group.label}</span><ChevronDown size={13} /></button
+            >
+            {#if !folded}
+              <div class="rail-items" transition:slide={{ duration: motionMs(200), easing: cubicOut }}>
+                {#each group.items as item (item.key)}
+                  <a
+                    class="rail-link"
+                    class:active={current?.key === item.key}
+                    href={item.href}
+                    title={collapsed ? item.label : item.blurb}
+                    aria-label={item.label}
+                  >
+                    <svelte:component this={ICONS[item.icon]} size={18} />
+                    <span>{item.label}</span>
+                  </a>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/each}
       </nav>
@@ -340,9 +402,14 @@
           >
           <span class="strip-title">{stripTitle}</span>
         </div>
-        {#if $activeEventKey}
-          <span class="strip-event" title="Active competition code">{displayEventCode($activeEventKey)}</span>
-        {/if}
+        <div class="strip-right">
+          {#if $activeEventKey}
+            <span class="strip-event" title="Active competition code">{displayEventCode($activeEventKey)}</span>
+          {/if}
+          <button type="button" class="icon-btn strip-search" on:click={() => (searchOpen = true)} aria-label="Search"
+            ><Search size={18} /></button
+          >
+        </div>
       </header>
 
       {#if canAdmin && !$team?.teamNumber}
@@ -405,8 +472,14 @@
 {/if}
 
 <ConfirmationDialog />
+{#if $user && !isLogin}<SiteSearch bind:open={searchOpen} pages={searchPages} />{/if}
 
 <style>
+  .design-frame {
+    min-height: calc(100 * var(--vh));
+    padding: var(--space-4);
+    background: var(--background);
+  }
   .set-team {
     display: block;
     padding: var(--space-2) var(--space-4);
@@ -529,8 +602,10 @@
     flex-direction: column;
     gap: calc(var(--rp) * 1.5);
     padding: var(--space-4) var(--space-3);
-    background: var(--surface-1);
-    border-right: 1px solid var(--border);
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
     overflow: hidden;
   }
   .brand-row {
@@ -539,7 +614,7 @@
     justify-content: space-between;
     gap: var(--space-2);
     padding: 0 var(--space-1) var(--space-3) var(--space-2);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   .brand {
     display: flex;
@@ -547,16 +622,16 @@
     gap: var(--space-2);
     min-width: 0;
     text-decoration: none;
-    color: var(--text);
+    color: var(--text-strong, var(--text));
   }
   .rail-toggle {
     flex-shrink: 0;
   }
   .brand-text {
-    font-family: var(--font-display);
+    font-family: var(--font-body, var(--font-display));
     font-weight: 600;
-    letter-spacing: 0.02em;
-    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    font-size: 1.12rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -567,15 +642,89 @@
     gap: calc(var(--rp) * 1.5);
     flex: 1;
   }
-  .rail-group {
+  .rail-group,
+  .rail-items {
     display: grid;
     gap: 2px;
   }
+  /* A group's label folds its pages away; the chevron turns when it is folded. */
+  button.rail-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.15rem var(--space-2) 0.15rem 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+  button.rail-label:hover {
+    color: var(--text);
+  }
+  button.rail-label :global(svg) {
+    opacity: 0.7;
+    transition: transform 0.18s ease;
+  }
+  .rail-group.folded button.rail-label :global(svg) {
+    transform: rotate(-90deg);
+  }
+  .rail-search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .rail-search:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .rail-search span {
+    flex: 1;
+    text-align: left;
+  }
+  .rail-search kbd {
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    font-family: inherit;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .shell.collapsed .rail-search {
+    justify-content: center;
+    padding: 0;
+  }
+  .shell.collapsed .rail-search span,
+  .shell.collapsed .rail-search kbd {
+    display: none;
+  }
+  .strip-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .strip .strip-search {
+    display: none;
+  }
   .rail-label {
-    margin: 0 0 var(--space-1) var(--space-2);
-    font-family: var(--font-display);
-    font-size: 0.72rem;
-    letter-spacing: 0.16em;
+    margin: 0 0 var(--space-1) var(--space-3);
+    font-family: var(--font-body, var(--font-display));
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
@@ -585,18 +734,15 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--rp) var(--space-2);
-    border-radius: var(--radius-sm);
+    padding: var(--rp) var(--space-3);
+    border-radius: var(--radius-full);
     color: var(--text-secondary);
     text-decoration: none;
     font-weight: 500;
     font-size: 0.92rem;
   }
   .rail-home {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 0.95rem;
     color: var(--text);
   }
   .rail-link,
@@ -608,14 +754,17 @@
   }
   .rail-link:hover,
   .rail-home:hover {
-    background: var(--surface-2);
-    color: var(--text);
-    transform: translateX(2px);
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: var(--text-strong, var(--text));
   }
   .rail-link.active,
   .rail-home.active {
-    background: var(--accent-subtle);
-    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
+  }
+  .rail-link.active :global(svg),
+  .rail-home.active :global(svg) {
+    color: var(--accent);
   }
   .rail-link::before,
   .rail-home::before {
@@ -638,7 +787,7 @@
     display: grid;
     gap: var(--space-2);
     padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   /* The rail never scrolls, so on shorter windows it tightens instead until every link fits. */
   @media (min-width: 901px) and (max-height: 62rem) {
@@ -717,7 +866,7 @@
     width: 2.1rem;
     height: 2.1rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
@@ -744,9 +893,10 @@
     gap: var(--space-3);
     min-height: var(--strip-height);
     padding: 0 var(--space-5);
-    background: color-mix(in srgb, var(--background) 88%, transparent);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   .strip-left {
     display: flex;
@@ -754,20 +904,23 @@
     gap: var(--space-2);
   }
   .strip-title {
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    font-family: var(--font-body, var(--font-display));
+    font-size: 1.2rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--text-strong, var(--text));
   }
   .strip-event {
     flex: 0 0 auto;
     margin-left: var(--space-3);
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text);
+    color: var(--text-secondary);
   }
   .menu-btn {
     display: none;
@@ -815,6 +968,12 @@
     }
     .rail {
       display: none;
+    }
+    .strip .strip-search {
+      display: inline-grid;
+      width: var(--tap-min);
+      height: var(--tap-min);
+      border: 0;
     }
     /* No menu button on phones: "More" in the bottom bar opens the same menu. */
     .menu-btn {
@@ -1042,7 +1201,7 @@
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .who-name,
     .strip-title {

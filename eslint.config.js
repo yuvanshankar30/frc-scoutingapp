@@ -1,4 +1,4 @@
-// Lint rules for the app (npm run lint). Formatting is Prettier's job (npm run format), so this
+// Lint rules for the app (npm run lint). This
 // only catches real mistakes: undefined names, unused code, and Svelte-specific problems.
 import js from '@eslint/js';
 import svelte from 'eslint-plugin-svelte';

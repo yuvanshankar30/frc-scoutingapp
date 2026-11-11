@@ -29,6 +29,44 @@ import {
   fetchCompetitionTeams
 } from '$lib/server/scouting/admin/competitionRoles.js';
 import { ADMIN_ACTIONS, competitionTeams as competitionTeamList } from '$lib/server/scouting/admin/actions.js';
+import { hasPermission } from '$lib/app/permissions.js';
+
+// What each action needs from someone whose access comes from a role (Scouting Admin > People > Roles). Admins, the
+// Competition Lead and holders of a Scouting Admin competition role keep full access, as before.
+const ACTION_PERMISSIONS = {
+  'fix-match-key': 'REMOVE_REPORTS',
+  'update-event-key': 'MANAGE_EVENT',
+  'update-smart-fuel-algorithm': 'MANAGE_EVENT',
+  'update-google-sheet-id': 'EXPORT_DATA',
+  'sync-scouting-sheet': 'EXPORT_DATA',
+  'add-manual-team': 'MANAGE_EVENT',
+  'remove-manual-team': 'MANAGE_EVENT',
+  'create-start-photo-upload': 'MANAGE_EVENT',
+  'save-start-photo': 'MANAGE_EVENT',
+  'delete-all-scouting-data': 'DELETE_DATA',
+  'ban-and-revoke-user': 'BAN_USERS',
+  'approve-user': 'APPROVE_USERS',
+  'set-user-password': 'PROMOTE_USERS',
+  'set-admin': 'PROMOTE_USERS',
+  'update-scout-name': 'PROMOTE_USERS',
+  'update-competition-roles': 'PROMOTE_USERS'
+};
+const RESOURCE_PERMISSIONS = {
+  'match-key-review': 'REMOVE_REPORTS',
+  'export-event-csv': 'EXPORT_DATA',
+  'export-match-scouting-csv': 'EXPORT_DATA'
+};
+
+/** Whether this person may open Scouting Admin at all: full admins, or a role carrying VIEW_ADMIN_PANEL. */
+function canEnter(profile, rosterKeys) {
+  return canManageScoutingAdmin(profile, rosterKeys) || hasPermission(profile, 'VIEW_ADMIN_PANEL');
+}
+
+/** Whether this person may do `need` (a permission key, or nothing for read-only views). */
+function canDo(profile, rosterKeys, need) {
+  if (canManageScoutingAdmin(profile, rosterKeys)) return true;
+  return !need || hasPermission(profile, need);
+}
 
 async function actorWithRosterKeys(authSupa, db) {
   const { actorId, profile, rosterKeys } = await fetchActorProfile(authSupa, { rosterDb: db });
@@ -42,7 +80,10 @@ export async function GET({ request, url }) {
     const { actorId, profile, actorRosterKeys } = await actorWithRosterKeys(authSupa, db);
 
     if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
-    if (!canManageScoutingAdmin(profile, actorRosterKeys)) return json({ error: 'Forbidden' }, { status: 403 });
+    if (!canEnter(profile, actorRosterKeys)) return json({ error: 'Forbidden' }, { status: 403 });
+    const need = RESOURCE_PERMISSIONS[url?.searchParams.get('resource') || ''];
+    if (!canDo(profile, actorRosterKeys, need))
+      return json({ error: 'Your role does not allow this.' }, { status: 403 });
     const settings = await getScoutingSettings(db);
     const eventKey = settings.event_key;
     const smartFuelEnabled = settings.smart_fuel_algorithm_enabled;
@@ -391,10 +432,14 @@ export async function POST({ request }) {
     const db = getSupabase();
     const { actorId, profile, actorRosterKeys } = await actorWithRosterKeys(authSupa, db);
     if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
-    if (!canManageScoutingAdmin(profile, actorRosterKeys)) return json({ error: 'Forbidden' }, { status: 403 });
+    if (!canEnter(profile, actorRosterKeys)) return json({ error: 'Forbidden' }, { status: 403 });
 
     const handler = Object.hasOwn(ADMIN_ACTIONS, action) ? ADMIN_ACTIONS[action] : null;
     if (!handler) return json({ error: 'Invalid action' }, { status: 400 });
+    // An action missing from the map stays full-admin only.
+    const need = Object.hasOwn(ACTION_PERMISSIONS, action) ? ACTION_PERMISSIONS[action] : '__full_admin__';
+    if (!canDo(profile, actorRosterKeys, need))
+      return json({ error: 'Your role does not allow this.' }, { status: 403 });
     return await handler({ db, body, action, actorId, profile });
   } catch (e) {
     return json({ error: e?.message || 'Internal error' }, { status: 500 });

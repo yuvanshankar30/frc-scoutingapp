@@ -25,9 +25,8 @@ describe('navigation', () => {
   it('leaves out the pages Team settings switched off', () => {
     const keys = (hidden) => visibleGroups(true, hidden).flatMap((group) => group.items.map((item) => item.key));
     expect(keys([])).toContain('assistant');
-    expect(keys(['assistant', 'predictions'])).not.toContain('assistant');
-    expect(keys(['assistant', 'predictions'])).not.toContain('predictions');
-    expect(visibleGroups(true, ['pitcrew']).every((group) => group.items.length > 0)).toBe(true);
+    expect(keys(['assistant'])).not.toContain('assistant');
+    expect(visibleGroups(true, ['driveteam']).every((group) => group.items.length > 0)).toBe(true);
   });
 
   it('falls back to Strategy on the phone bar when the role page is switched off', () => {
@@ -61,7 +60,6 @@ describe('navigation', () => {
 
   it('finds the active item for a nested route', () => {
     expect(activeItem('/scouting-admin/team')?.key).toBe('scouting-admin-team');
-    expect(activeItem('/predictions/leaderboard')?.key).toBe('predictions');
     expect(activeItem('/nowhere')).toBeNull();
   });
 
@@ -76,6 +74,7 @@ describe('navigation', () => {
     expect(canAdministerScouting({ role: 'member', roster_keys: ['Competition Lead'] })).toBe(true);
     expect(canAdministerScouting({ role: 'member', team_role: 'Competition Lead', roster_keys: [] })).toBe(true);
     expect(canAdministerScouting({ role: 'member', roster_keys: ['Scouting Admin', 'Data Scout Member'] })).toBe(false);
+    // A role carrying "Open Scouting Admin" shows the tab; what it can change there is checked per action.
     expect(
       canAdministerScouting({
         role: 'member',
@@ -83,7 +82,7 @@ describe('navigation', () => {
         permissions: ['VIEW_ADMIN_PANEL'],
         roster_keys: []
       })
-    ).toBe(false);
+    ).toBe(true);
     expect(canAdministerScouting({ role: 'admin', banned: true })).toBe(false);
     expect(canAdministerScouting({ role: 'member', banned: true, roster_keys: ['Scouting Lead'] })).toBe(false);
     expect(canAdministerScouting({ role: 'member' })).toBe(false);
@@ -103,14 +102,10 @@ describe('navigation', () => {
       'Overview',
       'Event setup',
       'Assignments',
-      'Training',
-      'Deadlines',
       'Edit',
       'People',
       'Team settings',
-      'Add user',
-      'Data',
-      'Extra'
+      'Data'
     ]);
   });
 
@@ -129,7 +124,7 @@ describe('phone bottom bar', () => {
 
   it('gives the last slot to the page a role uses most', () => {
     expect(bottomBarKeys(['Driver'])).toEqual(['home', 'matchscout', 'myscout', 'driveteam']);
-    expect(bottomBarKeys(['Mechanical Pit'])).toEqual(['home', 'matchscout', 'myscout', 'pitcrew']);
+    expect(bottomBarKeys(['Mechanical Pit'])).toEqual(['home', 'matchscout', 'myscout', 'strategy']);
     expect(bottomBarKeys(['Mechanical Pit', 'Data Scout Member'])).toEqual([
       'home',
       'matchscout',

@@ -16,13 +16,25 @@ import {
   MATCH_FORM_ROLES,
   MATCH_FORM_RATING_FIELDS,
   MATCH_OPTIONAL_RATING_FIELDS,
+  ALL_REQUIRED,
   validateMatchScoutForm,
   validatePerformanceRatings,
   validateRobotCondition,
-  robotNoShow
+  robotNoShow,
+  BPS_SLIDER_MAX,
+  bpsBucket,
+  FOUL_NATURES,
+  MATCH_SHIFT_KEYS,
+  ROBOT_SHIFT_STATUSES,
+  normalizeDefense,
+  normalizeRankedTeamKey,
+  overallRobotStatus
 } from '$lib/scouting/matchScouting.js';
 import { REPORT_KINDS, withoutOtherKindFields } from '$lib/scouting/reportKinds.js';
 import { canonicalMatchKey } from '$lib/matches/matchKeys.js';
+
+// Rankings (matchRankingSchema.js) import it from here; it lives with the defense targets that share it.
+export { normalizeRankedTeamKey };
 
 export const START_POSITIONS = ['left trench', 'left mound', 'center', 'right mound', 'right trench'];
 export const AUTO_ZONES = ['source', 'wing', 'neutral', 'opponent wing'];
@@ -120,7 +132,7 @@ export function normalizePowerRanking(value) {
   const ranking = {};
   const used = new Set();
   for (const [rawKey, rawRank] of Object.entries(value)) {
-    const teamKey = normalizeTeamKey(rawKey);
+    const teamKey = normalizeRankedTeamKey(rawKey);
     const rank = Number(rawRank);
     if (!teamKey || !Number.isInteger(rank) || rank < 1 || rank > 6 || used.has(rank) || ranking[teamKey]) return {};
     used.add(rank);
@@ -132,7 +144,7 @@ export function normalizePowerRanking(value) {
 /**
  * @returns {{ value: object|null, error: string|null }}
  */
-export function normalizeMatchScoutEntry(body, actorId = null) {
+export function normalizeMatchScoutEntry(body, actorId = null, rules = ALL_REQUIRED) {
   const event_key = trimmed(body?.event_key, 60);
   const match_label = trimmed(body?.match_key, 120);
   const team_key = normalizeTeamKey(body?.team_key);
@@ -165,9 +177,9 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
   const report_kind = REPORT_KINDS.includes(body?.report_kind) ? body.report_kind : 'data';
   if (currentForm) {
     if (report_kind === 'data') {
-      const invalid = validateMatchScoutForm(body);
+      const invalid = validateMatchScoutForm(body, rules);
       if (invalid) return { value: null, error: invalid };
-      if (!robotNoShow(body) && !START_POSITIONS.includes(body.starting_position))
+      if (!robotNoShow(body) && rules.need('prematch.start') && !START_POSITIONS.includes(body.starting_position))
         return { value: null, error: 'Select a starting position.' };
     } else if (!String(body.scout_name || '').trim()) {
       return { value: null, error: 'Enter the scout name.' };
@@ -178,13 +190,18 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
     if (body.section_fields >= 3) {
       const invalid =
         report_kind === 'performance'
-          ? validatePerformanceRatings(body)
+          ? validatePerformanceRatings(body, rules)
           : report_kind === 'robot'
-            ? validateRobotCondition(body)
+            ? validateRobotCondition(body, rules)
             : null;
       if (invalid) return { value: null, error: invalid };
     }
-    if (report_kind === 'robot' && !robotNoShow(body) && typeof body.mechanical_break !== 'boolean')
+    if (
+      report_kind === 'robot' &&
+      !robotNoShow(body) &&
+      rules.need('postmatch.break') &&
+      typeof body.mechanical_break !== 'boolean'
+    )
       return { value: null, error: 'Select whether a mechanical break occurred.' };
     if (body.mechanical_break != null && typeof body.mechanical_break !== 'boolean')
       return { value: null, error: 'Select whether a mechanical break occurred.' };
@@ -223,7 +240,8 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
           significant_crash: typeof body.significant_crash === 'boolean' ? body.significant_crash : null,
           crash_target: body.significant_crash === true ? body.crash_target : null,
           crash_details: body.significant_crash === true ? trimmed(body.crash_details, 500) : null,
-          teleop_robot_status: body.teleop_robot_status || null,
+          // Robot status per shift (section_fields 4) also keeps its worst status as the single match status.
+          teleop_robot_status: overallRobotStatus(body.robot_status_shifts) || body.teleop_robot_status || null,
           mechanical_break: typeof body.mechanical_break === 'boolean' ? body.mechanical_break : null
         }
       : {}),
@@ -248,7 +266,10 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
     balls_scored_average: balls?.average ?? null,
     auto_collision: body?.auto_collision === true,
     auto_collision_notes: trimmed(body?.auto_collision_notes, 500),
-    ratings: normalizeRatings(body?.ratings),
+    // The BPS slider's exact reading also fills the older 1-5 BPS bucket that analytics read.
+    ratings: normalizeRatings(
+      bpsOrNull(body?.bps) == null ? body?.ratings : { ...body?.ratings, BPS: bpsBucket(bpsOrNull(body.bps)) }
+    ),
     teleop_roles: normalizeStringList(body?.teleop_roles, currentForm ? MATCH_FORM_ROLES : TELEOP_ROLES),
     teleop_notes: trimmed(body?.teleop_notes),
     // Unrated arrives as null, and Number(null) is 0, which would clamp to a real (slowest) rating of 1.
@@ -261,7 +282,9 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
       ? body.mechanical_break === true || body.significant_crash === true
       : body?.crash_or_break === true,
     robot_disabled:
-      currentForm && body.teleop_robot_status === 'dead' ? 'died' : oneOf(body?.robot_disabled, DISABLED_STATES),
+      currentForm && (body.teleop_robot_status === 'dead' || overallRobotStatus(body.robot_status_shifts) === 'dead')
+        ? 'died'
+        : oneOf(body?.robot_disabled, DISABLED_STATES),
     card: oneOf(body?.card, CARDS),
     beached: body?.beached === true,
     // Unanswered stays empty: Number(null) is 0, which would read as a real (worst) rating.
@@ -331,6 +354,27 @@ export function sectionFields(body) {
     fouls_major: countOrNull(body?.fouls_major),
     break_details: trimmed(body?.break_details, 2000),
     break_impact: trimmed(body?.break_impact, 2000),
-    break_response: trimmed(body?.break_response, 2000)
+    break_response: trimmed(body?.break_response, 2000),
+    // section_fields 4.
+    defense: body?.teleop_roles?.includes?.('Defense') ? normalizeDefense(body?.defense) : null,
+    bps: bpsOrNull(body?.bps),
+    robot_status_shifts: shiftStatuses(body?.robot_status_shifts),
+    foul_nature: oneOf(body?.foul_nature, FOUL_NATURES),
+    foul_details: trimmed(body?.foul_details, 2000)
   };
+}
+
+function bpsOrNull(value) {
+  if (value === '' || value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 && number <= BPS_SLIDER_MAX ? Math.round(number * 10) / 10 : null;
+}
+
+/** { shift1: 'active', ..., endgame: 'dead' } with only known shifts and statuses; null when none were given. */
+export function shiftStatuses(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const shifts = Object.fromEntries(
+    MATCH_SHIFT_KEYS.filter((key) => ROBOT_SHIFT_STATUSES.includes(value[key])).map((key) => [key, value[key]])
+  );
+  return Object.keys(shifts).length ? shifts : null;
 }

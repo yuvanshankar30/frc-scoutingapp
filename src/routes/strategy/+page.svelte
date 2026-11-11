@@ -1,14 +1,15 @@
 <script>
-  // Strategy (#187): a Team View-style brief for any team at the event, with the team list beside it (a bottom
-  // sheet on phones), your team's next matches on top, and Scout accuracy as its own tab. Numbers come from the event's
-  // EPA model (official scores anchored to our scouting, #171), match scouting, pit scouting and TBA rankings.
+  // Strategy: a Team View-style brief for any team at the event, with the team list beside it (a bottom
+  // sheet on phones), your team's next matches on top, and a Matches tab that plans each upcoming match with the
+  // partners. Numbers come from the event's EPA model (official scores anchored to our scouting), match scouting, pit
+  // scouting and TBA rankings.
   import { onMount } from 'svelte';
-  import { AlertTriangle, RefreshCw, Search, Target } from 'lucide-svelte';
+  import { AlertTriangle, RefreshCw, Search } from 'lucide-svelte';
   import { isPhone } from '$lib/stores/device.js';
   import BottomSheet from '$lib/components/common/BottomSheet.svelte';
   import Select from '$lib/components/common/Select.svelte';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
-  import ScoutAccuracy from '$lib/components/strategy/ScoutAccuracy.svelte';
+  import StrategyMeetings from '$lib/components/strategy/StrategyMeetings.svelte';
   import StrategyTeamBrief from '$lib/components/strategy/StrategyTeamBrief.svelte';
   import { getAuthHeader } from '$lib/app/supabase.js';
   import { fetchWithCache } from '$lib/app/offlineCache.js';
@@ -42,7 +43,7 @@
   let teamSearch = '';
   let sortKey = 'epa';
   let selectedTeamKey = '';
-  let view = 'teams'; // 'teams' | 'accuracy'
+  let view = 'teams'; // 'teams' | 'meetings'
   // Phones open the brief in a sheet only when a team is tapped; desktop always shows one.
   let sheetOpen = false;
 
@@ -60,6 +61,12 @@
   // Performance scouts rank every robot they watched, so a team's power rank comes from all reports, not only its own.
   $: powerRankByTeam = new Map(averagePowerRankings(entries).teams.map((team) => [team.team_key, team]));
   $: nameByTeam = new Map(eventTeams.map((team) => [team.key, team.nickname || team.name || '']));
+  // Each team's strat person's phone, from pit scouting, for the Matches tab.
+  $: phoneByTeam = new Map(
+    rows
+      .map((row) => [row.teamKey, String(row.pitEntry?.technical_details?.strat_phone || '').trim()])
+      .filter(([, phone]) => phone)
+  );
   $: items = rows.map((row) => ({
     row,
     name: nameByTeam.get(row.teamKey) || '',
@@ -233,8 +240,7 @@
 <div class="strategy">
   <header class="page-head">
     <div>
-      <span class="eyebrow">Competition</span>
-      <h1><Target size={24} /> Strategy</h1>
+      <h1>Strategy Board</h1>
       <p>Every team at the event, with the numbers behind match and pick decisions.</p>
     </div>
     <div class="head-actions">
@@ -318,16 +324,27 @@
       >
       <button
         role="tab"
-        aria-selected={view === 'accuracy'}
-        class:on={view === 'accuracy'}
-        on:click={() => (view = 'accuracy')}>Scout accuracy</button
+        aria-selected={view === 'meetings'}
+        class:on={view === 'meetings'}
+        on:click={() => (view = 'meetings')}>Matches</button
       >
     </div>
     {#if matchesWarning}<p class="muted">{matchesWarning}</p>{/if}
     {#if teamsWarning}<p class="muted">{teamsWarning} Showing teams found in scouting data.</p>{/if}
 
-    {#if view === 'accuracy'}
-      <ScoutAccuracy matches={scheduledMatches} {entries} />
+    {#if view === 'meetings'}
+      <StrategyMeetings
+        matches={scheduledMatches}
+        teamKey={OUR_TEAM_KEY}
+        {phoneByTeam}
+        {nameByTeam}
+        onSelectTeam={(key) => {
+          // Only leave Matches when the partner is on the board, or the tap would land on an empty brief.
+          if (!itemByTeam.has(key)) return;
+          view = 'teams';
+          selectTeam(key);
+        }}
+      />
     {:else}
       <div class="board">
         <aside class="team-list" aria-label="Teams">
@@ -448,10 +465,11 @@
     flex-wrap: wrap;
   }
   .page-head h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
     margin: 0;
+    font-size: clamp(1.75rem, 2.8vw, 2.3rem);
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    color: var(--text-strong, var(--text));
   }
   .page-head p {
     margin: var(--space-1) 0 0;
@@ -484,23 +502,46 @@
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-3);
   }
+  /* One quiet bar of event totals, divided into equal cells. */
   .stat-strip {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    overflow: hidden;
   }
   .stat-strip span {
-    display: inline-flex;
-    align-items: baseline;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-3);
-    border: 1px solid var(--border);
-    background: var(--surface-1);
-    color: var(--text-secondary);
+    display: grid;
+    gap: 2px;
+    padding: var(--space-3) var(--space-4);
+    border-left: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stat-strip span:first-child {
+    border-left: 0;
+  }
+  @media (max-width: 600px) {
+    .stat-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .stat-strip span:nth-child(3) {
+      border-left: 0;
+    }
+    .stat-strip span:nth-child(n + 3) {
+      border-top: 1px solid var(--border);
+    }
   }
   .stat-strip b {
-    color: var(--text);
-    font-size: 1.1rem;
+    order: -1;
+    color: var(--text-strong, var(--text));
+    font-size: 1.5rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    text-transform: none;
     font-variant-numeric: tabular-nums;
   }
   .stat-strip .risky b {
@@ -511,9 +552,9 @@
     grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
     gap: var(--space-4);
     align-items: start;
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-4);
     border: 1px solid var(--border);
-    border-left: 4px solid var(--accent);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .ours-id {
@@ -524,7 +565,8 @@
     font-family: var(--font-display);
     font-size: 2rem;
     line-height: 1;
-    color: var(--accent-strong);
+    font-weight: 500;
+    color: var(--text-strong, var(--text));
   }
   .ours-nums {
     color: var(--text-secondary);
@@ -543,13 +585,14 @@
     gap: var(--space-1);
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     background: var(--surface-2);
   }
   .ours-next li.red {
-    border-left: 3px solid var(--red-base);
+    box-shadow: inset 3px 0 0 var(--alliance-red-text);
   }
   .ours-next li.blue {
-    border-left: 3px solid var(--blue-base);
+    box-shadow: inset 3px 0 0 var(--alliance-blue-text);
   }
   .next-top {
     display: flex;
@@ -580,6 +623,7 @@
     min-height: 1.75rem;
     padding: 0 var(--space-2);
     border: 1px solid var(--border);
+    border-radius: var(--radius-full);
     background: var(--surface-1);
     color: var(--text);
     font: inherit;
@@ -600,22 +644,31 @@
 
   .tabs {
     display: flex;
-    border-bottom: 1px solid var(--border);
+    gap: 2px;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   .tabs button {
-    min-height: var(--tap-min);
+    min-height: 2.25rem;
     padding: 0 var(--space-4);
     border: 0;
-    border-bottom: 2px solid transparent;
+    border-radius: var(--radius-full);
     background: none;
     color: var(--text-secondary);
     font: inherit;
-    font-weight: 700;
+    font-weight: 500;
     cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .tabs button:hover {
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: var(--text-strong, var(--text));
   }
   .tabs button.on {
-    border-bottom-color: var(--accent);
-    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
   }
 
   /* Desktop: the team list on the left stays in view while the brief scrolls beside it. */
@@ -627,11 +680,15 @@
   }
   /* The list stays where it is on the page and scrolls inside its own box. */
   .team-list {
+    position: sticky;
+    top: calc(var(--strip-height, 3rem) + var(--space-3));
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
-    max-height: 80vh;
+    max-height: calc(100 * var(--vh) - var(--strip-height, 3rem) - var(--space-6));
     border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
+    overflow: hidden;
   }
   .list-tools {
     display: grid;
@@ -643,8 +700,9 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-3);
     border: 1px solid var(--border);
+    border-radius: var(--radius-full);
     background: var(--surface-2);
     color: var(--text-muted);
   }

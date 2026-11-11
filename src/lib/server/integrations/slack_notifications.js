@@ -239,7 +239,7 @@ function formatMb(bytes) {
   return `${Math.round((Number(bytes) || 0) / (1024 * 1024))} MB`;
 }
 
-/** Data cleanup (#125): DM each admin once per plan that a cleanup is waiting for approval. Never deletes anything. */
+/** Data cleanup: DM each admin once per plan that a cleanup is waiting for approval. Never deletes anything. */
 export async function notifyDataCleanupPlan(plan) {
   if (!plan?.planId || !plan.items?.length) return { ok: false, reason: 'no-plan' };
   const supa = getSupabase();

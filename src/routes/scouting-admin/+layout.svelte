@@ -18,28 +18,23 @@
   import { setActiveEvent } from '$lib/stores/activeEvent.js';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
   import DatePicker from '$lib/components/common/DatePicker.svelte';
-  import FormEditor from '$lib/components/forms/FormEditor.svelte';
-  import ScoutDeadlines from '$lib/components/scouting/ScoutDeadlines.svelte';
+  import FormEditor from '$lib/components/forms/designer/FormDesigner.svelte';
   import ScoutDataBrowser from '$lib/components/scouting/ScoutDataBrowser.svelte';
+  import TeamRankingDefensePanel from '$lib/components/scouting/TeamRankingDefensePanel.svelte';
   import MatchKeyReview from '$lib/components/scouting/MatchKeyReview.svelte';
   import DataStoragePanel from '$lib/components/scouting/DataStoragePanel.svelte';
-  import AdminModelsPanel from '$lib/components/scouting/AdminModelsPanel.svelte';
-  import AdminAddUser from '$lib/components/scouting/AdminAddUser.svelte';
   import TeamSettingsPanel from '$lib/components/settings/TeamSettingsPanel.svelte';
-  import TrainingPanel from '$lib/components/scouting/TrainingPanel.svelte';
   import TbaEventPicker from '$lib/components/scouting/TbaEventPicker.svelte';
   import { page } from '$app/stores';
   import { SCOUTING_ADMIN_PAGES } from '$lib/app/navigation.js';
   import { isPhone } from '$lib/stores/device.js';
   import LineChart from '$lib/components/charts/LineChart.svelte';
   import CountBars from '$lib/components/charts/CountBars.svelte';
-  import {
-    disagreementsPerScout,
-    reportKindMix,
-    reportsPerScout,
-    robotsReportedPerMatch
-  } from '$lib/scouting/adminCharts.js';
+  import { reportKindMix, robotsReportedPerMatch } from '$lib/scouting/adminCharts.js';
   import BottomSheet from '$lib/components/common/BottomSheet.svelte';
+  import RolesPanel from '$lib/components/admin/RolesPanel.svelte';
+  import ShiftPlanner from '$lib/components/scouting/ShiftPlanner.svelte';
+  import ActivityPanel from '$lib/components/admin/ActivityPanel.svelte';
   import {
     CalendarClock,
     CalendarDays,
@@ -52,6 +47,7 @@
     Pencil,
     UserCog,
     UserPlus,
+    RefreshCw,
     Wrench
   } from 'lucide-svelte';
 
@@ -131,10 +127,11 @@
   // Which assignment board is showing - a picker instead of five stacked
   // accordions the admin had to scroll past and open one at a time.
   const ASSIGNMENT_TABS = [
-    { key: 'data', label: 'Data Scout' },
-    { key: 'note', label: 'Note Scout' },
-    { key: 'prescout', label: 'Prescout' },
-    { key: 'pit', label: 'Pit Scout' }
+    { key: 'data', label: 'Match scouting' },
+    { key: 'shifts', label: 'Shifts' },
+    { key: 'note', label: 'Note scouting' },
+    { key: 'prescout', label: 'Prescouting' },
+    { key: 'pit', label: 'Pit scouting' }
   ];
   let activeAssignmentTab = 'data';
 
@@ -172,25 +169,7 @@
   };
 
   let users = [];
-  let missedMatches = [];
   let matchReports = [];
-  let smartFuelModel = {
-    enabled: false,
-    match_count: 0,
-    residual_rmse: 0,
-    residual_mae: 0,
-    warning: '',
-    by_scout: []
-  };
-  let quickScoutModel = {
-    alliance_count: 0,
-    coefficients: null,
-    residual_rmse: 0,
-    residual_mae: 0,
-    warning: '',
-    by_team: []
-  };
-  let savingSmartFuel = false;
   let userSearch = '';
   let roleFilter = 'all';
   let editingId = null;
@@ -477,10 +456,7 @@
         users.map((row) => [row.id, row.full_name && !row.full_name.includes('@') ? row.full_name : ''])
       );
       loadStartPhotos().catch((error) => (photoStatus = error.message));
-      missedMatches = data.data?.missed_matches || [];
       matchReports = data.data?.match_reports || [];
-      smartFuelModel = data.data?.smart_fuel_model || smartFuelModel;
-      quickScoutModel = data.data?.quick_scout_model || quickScoutModel;
       googleSheetId = data.data?.google_sheet_id || '';
       googleSheetIdInput = googleSheetId;
       googleSheetLastSyncedAt = data.data?.google_sheet_last_synced_at || null;
@@ -689,36 +665,6 @@
       await loadActiveLink(eventKey);
     } finally {
       savingLink = false;
-    }
-  }
-
-  async function setSmartFuelAlgorithmEnabled(enabled) {
-    savingSmartFuel = true;
-    errorMsg = '';
-    successMsg = '';
-    try {
-      const res = await authFetch('/api/scouting-admin', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update-smart-fuel-algorithm',
-          enabled
-        })
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to save smart algorithm setting (${res.status})`);
-      }
-      smartFuelModel = {
-        ...smartFuelModel,
-        enabled: !!data.data?.smart_fuel_algorithm_enabled
-      };
-      successMsg = `Smart fuel calibration ${enabled ? 'enabled' : 'disabled'}.`;
-      await loadDashboard({ silent: true });
-    } catch (e) {
-      errorMsg = e.message || 'Failed to update smart fuel calibration.';
-    } finally {
-      savingSmartFuel = false;
     }
   }
 
@@ -932,6 +878,8 @@
   $: if (!user?.id) {
     canAccess = null;
   }
+  // People > People, Roles or Activity.
+  let peopleView = 'people';
 </script>
 
 {#if canAccess === false}
@@ -943,23 +891,6 @@
   </div>
 {:else}
   <div class="scouting-admin-page">
-    <div class="page-header scouting-header">
-      <div class="header-content scouting-header-content">
-        <div>
-          <h1>Scouting Admin</h1>
-          <p class="sub-label">
-            Current event:
-            <span class="mono">{displayEventCode(eventKey) || 'Not set'}</span>
-          </p>
-        </div>
-      </div>
-      <div class="page-actions">
-        <button class="btn btn-secondary" disabled={loading} on:click={loadDashboard}
-          >{loading ? 'Refreshing...' : 'Refresh'}</button
-        >
-      </div>
-    </div>
-
     {#if $isPhone}
       <button type="button" class="adm-picker" aria-haspopup="dialog" on:click={() => (sectionSheetOpen = true)}>
         <svelte:component this={ADMIN_ICONS[currentTab.icon]} size={20} />
@@ -986,22 +917,34 @@
         </nav>
       </BottomSheet>
     {:else}
-      <nav class="admin-tabs" aria-label="Scouting Admin pages">
-        {#each SCOUTING_ADMIN_PAGES as tab (tab.key)}
-          <a
-            class="admin-tab"
-            class:active={tab.href === '/scouting-admin'
-              ? section === 'overview'
-              : $page.url.pathname.startsWith(tab.href)}
-            href={tab.href}
-            aria-current={(
-              tab.href === '/scouting-admin' ? section === 'overview' : $page.url.pathname.startsWith(tab.href)
-            )
-              ? 'page'
-              : undefined}>{tab.label}</a
+      <div class="admin-bar">
+        <nav class="admin-tabs" aria-label="Scouting Admin pages">
+          {#each SCOUTING_ADMIN_PAGES as tab (tab.key)}
+            <a
+              class="admin-tab"
+              class:active={tab.href === '/scouting-admin'
+                ? section === 'overview'
+                : $page.url.pathname.startsWith(tab.href)}
+              href={tab.href}
+              aria-current={(
+                tab.href === '/scouting-admin' ? section === 'overview' : $page.url.pathname.startsWith(tab.href)
+              )
+                ? 'page'
+                : undefined}>{tab.label}</a
+            >
+          {/each}
+        </nav>
+        <div class="admin-bar-end">
+          <button
+            class="admin-refresh"
+            type="button"
+            disabled={loading}
+            on:click={loadDashboard}
+            aria-label="Refresh"
+            title="Refresh"><RefreshCw size={15} class={loading ? 'spin' : ''} /></button
           >
-        {/each}
-      </nav>
+        </div>
+      </div>
     {/if}
 
     {#if warning || errorMsg || successMsg}
@@ -1019,47 +962,127 @@
     {/if}
 
     {#if section === 'event'}
-      <div class="sp-grid">
-        <section class="sp-panel">
-          <header>
-            <h3>Active event</h3>
-            <p>The competition every scouting page works from.</p>
-          </header>
-          <div class="sp-row">
-            <Select
-              id="eventSelect"
-              class="sp-input"
-              wrap="sel-event"
-              bind:value={selectedEventKey}
-              aria-label="Competition code"
-            >
-              {#if eventKey && !upcomingEvents.find((e) => e.key === eventKey)}
-                <option value={eventKey}>{eventKey} (current)</option>
-              {/if}
-              {#each upcomingEvents as ev}
-                <option value={ev.key}>{ev.key} - {ev.name}{ev.start_date ? ` (${ev.start_date})` : ''}</option>
-              {/each}
-              {#each pastEventsWithData as ev}
-                <option value={ev.value}>{ev.value}{ev.label && ev.label !== ev.value ? ` - ${ev.label}` : ''}</option>
-              {/each}
-            </Select>
-            <button
-              class="btn btn-primary"
-              disabled={!selectedEventKey || savingEvent || selectedEventKey === eventKey}
-              on:click={() => saveEventKey()}>{savingEvent ? 'Saving...' : 'Set event'}</button
+      <div class="ev">
+        <section class="ev-summary" aria-label="Current event">
+          <div>
+            <span class="ev-k">Now scouting</span>
+            <b class="ev-code">{displayEventCode(eventKey) || 'No event set'}</b>
+          </div>
+          <div>
+            <span class="ev-k">Schedule and teams from</span>
+            <b
+              >{activeLink.tba_name ||
+                activeLink.tba_event_key ||
+                (eventKey ? `${displayEventCode(eventKey)} on TBA` : '—')}</b
             >
           </div>
-          <p class="sp-meta">Now scouting <b>{displayEventCode(eventKey) || 'nothing yet'}</b></p>
-          {#if eventKey}
-            <div class="sp-link">
-              <h4>Tracks TBA event <span class="sp-optional">optional</span></h4>
-              <p>
-                Use another event's schedule, teams, rankings and OPRs from The Blue Alliance for {displayEventCode(
-                  eventKey
-                )}, for example a practice code that follows the real event. Leave empty to use {displayEventCode(
-                  eventKey
-                )} itself.
-              </p>
+          <div>
+            <span class="ev-k">Prescouting teams</span>
+            <b>{manualTeams.length}</b>
+          </div>
+          <div>
+            <span class="ev-k">Starting photos</span>
+            <b>{Object.values(startPhotos).filter(Boolean).length} of {startingPositions.length * 2}</b>
+          </div>
+        </section>
+
+        <section class="ev-step">
+          <header class="ev-head">
+            <span class="ev-num">1</span>
+            <div>
+              <h3>Choose the event</h3>
+              <p>The competition every scouting page works from.</p>
+            </div>
+          </header>
+          <div class="ev-body">
+            <label class="ev-field" for="eventSelect">Event</label>
+            <div class="sp-row">
+              <Select
+                id="eventSelect"
+                class="sp-input"
+                wrap="sel-event"
+                bind:value={selectedEventKey}
+                aria-label="Competition code"
+              >
+                {#if eventKey && !upcomingEvents.find((e) => e.key === eventKey)}
+                  <option value={eventKey}>{eventKey} (current)</option>
+                {/if}
+                {#each upcomingEvents as ev}
+                  <option value={ev.key}>{ev.key} - {ev.name}{ev.start_date ? ` (${ev.start_date})` : ''}</option>
+                {/each}
+                {#each pastEventsWithData as ev}
+                  <option value={ev.value}>{ev.value}{ev.label && ev.label !== ev.value ? ` - ${ev.label}` : ''}</option
+                  >
+                {/each}
+              </Select>
+              <button
+                class="btn btn-primary"
+                disabled={!selectedEventKey || savingEvent || selectedEventKey === eventKey}
+                on:click={() => saveEventKey()}>{savingEvent ? 'Saving...' : 'Set event'}</button
+              >
+            </div>
+
+            <details class="ev-more">
+              <summary>Event not in the list? Create a competition code</summary>
+              <div class="ev-more-body">
+                <p>
+                  For an off-season or practice event: the year followed by the event code, like 2026mttd. It can follow
+                  an event on The Blue Alliance, or stand on its own.
+                </p>
+                <label class="ev-field" for="newEventCode">Competition code</label>
+                <input
+                  id="newEventCode"
+                  class="sp-input sp-code-input"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  maxlength="32"
+                  placeholder="2026MTTD"
+                  bind:value={newEventCode}
+                  on:keydown={(e) => {
+                    if (e.key === 'Enter' && normalizeEventCode(newEventCode) && !savingEvent)
+                      saveEventKey(newEventCode, { create: true });
+                  }}
+                />
+                <label class="ev-field" for="new-tba-event"
+                  >Follows TBA event <span class="sp-optional">optional</span></label
+                >
+                <TbaEventPicker
+                  id="new-tba-event"
+                  code={normalizeEventCode(newEventCode) || ''}
+                  bind:value={newEventTba}
+                  bind:label={newEventTbaLabel}
+                  disabled={savingEvent}
+                />
+                <div>
+                  <button
+                    class="btn btn-primary"
+                    disabled={!normalizeEventCode(newEventCode) || savingEvent}
+                    on:click={() => saveEventKey(newEventCode, { create: true })}
+                    >{savingEvent ? 'Saving...' : 'Create and set'}</button
+                  >
+                </div>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        {#if eventKey}
+          <section class="ev-step">
+            <header class="ev-head">
+              <span class="ev-num">2</span>
+              <div>
+                <h3>Follow a TBA event <span class="sp-optional">optional</span></h3>
+                <p>
+                  Take {displayEventCode(eventKey)}'s schedule, teams, rankings and OPRs from another event on The Blue
+                  Alliance, for example when a practice code follows the real event. Leave empty to use
+                  {displayEventCode(eventKey)} itself.
+                </p>
+              </div>
+            </header>
+            <div class="ev-body">
+              <label class="ev-field" for="active-tba-event">TBA event</label>
               <TbaEventPicker
                 id="active-tba-event"
                 code={eventKey}
@@ -1069,136 +1092,101 @@
                 on:change={changeActiveLink}
               />
             </div>
-          {/if}
-          <div class="sp-create">
-            <h4>Create a competition code</h4>
-            <p>
-              For an event that is not in the list, such as an off-season or practice event. Use the year followed by
-              the event code, like 2026mttd.
-            </p>
+          </section>
+        {/if}
+
+        <section class="ev-step">
+          <header class="ev-head">
+            <span class="ev-num">{eventKey ? 3 : 2}</span>
+            <div>
+              <h3>Prescouting teams <span class="sp-count">{manualTeams.length}</span></h3>
+              <p>
+                Teams added by hand before the event has a roster on The Blue Alliance. They can stay once the real
+                roster is out.
+              </p>
+            </div>
+          </header>
+          <div class="ev-body">
+            <label class="ev-field" for="manual-team">Team number</label>
             <div class="sp-row">
               <input
-                id="newEventCode"
-                class="sp-input sp-code-input"
+                id="manual-team"
+                class="sp-input"
                 type="text"
-                autocomplete="off"
-                autocapitalize="characters"
-                spellcheck="false"
-                maxlength="32"
-                placeholder="2026MTTD"
-                aria-label="New competition code"
-                bind:value={newEventCode}
+                inputmode="numeric"
+                placeholder="e.g. 5199"
+                bind:value={manualTeamInput}
                 on:keydown={(e) => {
-                  if (e.key === 'Enter' && normalizeEventCode(newEventCode) && !savingEvent)
-                    saveEventKey(newEventCode, { create: true });
+                  if (e.key === 'Enter') addManualTeam();
                 }}
               />
               <button
                 class="btn btn-primary"
-                disabled={!normalizeEventCode(newEventCode) || savingEvent}
-                on:click={() => saveEventKey(newEventCode, { create: true })}
-                >{savingEvent ? 'Saving...' : 'Create and set'}</button
+                disabled={!manualTeamInput.trim() || savingManualTeam}
+                on:click={addManualTeam}>{savingManualTeam ? 'Adding...' : 'Add team'}</button
               >
             </div>
-            <div class="sp-link">
-              <h4>Track a TBA event <span class="sp-optional">optional</span></h4>
-              <p>
-                Search by name and the code will follow that event on The Blue Alliance. Skip it for an event TBA does
-                not list.
-              </p>
-              <TbaEventPicker
-                id="new-tba-event"
-                code={normalizeEventCode(newEventCode) || ''}
-                bind:value={newEventTba}
-                bind:label={newEventTbaLabel}
-                disabled={savingEvent}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class="sp-panel">
-          <header>
-            <h3>Prescouting teams</h3>
-            <span class="sp-count">{manualTeams.length}</span>
-          </header>
-          <p>
-            Teams added by hand before an event has a roster on The Blue Alliance. They are harmless to leave once the
-            real roster is available.
-          </p>
-          <div class="sp-row">
-            <input
-              class="sp-input"
-              type="text"
-              inputmode="numeric"
-              placeholder="Team number, e.g. 5199"
-              bind:value={manualTeamInput}
-              on:keydown={(e) => {
-                if (e.key === 'Enter') addManualTeam();
-              }}
-              aria-label="Team number"
-            />
-            <button
-              class="btn btn-primary"
-              disabled={!manualTeamInput.trim() || savingManualTeam}
-              on:click={addManualTeam}>{savingManualTeam ? 'Adding...' : 'Add'}</button
-            >
-          </div>
-          {#if manualTeams.length}
-            <ul class="sp-chips">
-              {#each manualTeams as teamKey}
-                <li>
-                  {teamKey.replace(/^frc/i, '')}<button
-                    type="button"
-                    disabled={removingManualTeam === teamKey}
-                    on:click={() => removeManualTeam(teamKey)}
-                    aria-label={`Remove team ${teamKey.replace(/^frc/i, '')}`}>&times;</button
-                  >
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </section>
-
-        <section class="sp-panel sp-wide">
-          <header>
-            <h3>Starting position photos</h3>
-            <p>
-              Photos scouts see when choosing where a robot starts. JPEG, PNG or WebP, up to 5 MiB. Without one they see
-              a schematic.
-            </p>
-          </header>
-          {#each ['red', 'blue'] as photoAlliance}
-            <div class="sp-alliance">
-              <h4 class={photoAlliance}>{photoAlliance} alliance</h4>
-              <div class="sp-tiles">
-                {#each startingPositions as position}
-                  <label class="sp-tile" class:has-photo={startPhotos[`${photoAlliance}:${position}`]}>
-                    {#if startPhotos[`${photoAlliance}:${position}`]}
-                      <img
-                        src={startPhotos[`${photoAlliance}:${position}`]}
-                        alt={`${photoAlliance} ${position} starting position`}
-                      />
-                    {:else}
-                      <span class="sp-empty">No photo</span>
-                    {/if}
-                    <span class="sp-cap"
-                      ><b>{position}</b><small
-                        >{startPhotos[`${photoAlliance}:${position}`] ? 'Replace' : 'Upload'}</small
-                      ></span
+            {#if manualTeams.length}
+              <ul class="sp-chips">
+                {#each manualTeams as teamKey}
+                  <li>
+                    {teamKey.replace(/^frc/i, '')}<button
+                      type="button"
+                      disabled={removingManualTeam === teamKey}
+                      on:click={() => removeManualTeam(teamKey)}
+                      aria-label={`Remove team ${teamKey.replace(/^frc/i, '')}`}>&times;</button
                     >
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      disabled={photoSaving}
-                      on:change={(event) => uploadStartPhoto(event, photoAlliance, position)}
-                    />
-                  </label>
+                  </li>
                 {/each}
-              </div>
+              </ul>
+            {/if}
+          </div>
+        </section>
+
+        <section class="ev-step">
+          <header class="ev-head">
+            <span class="ev-num">{eventKey ? 4 : 3}</span>
+            <div>
+              <h3>Starting position photos <span class="sp-optional">optional</span></h3>
+              <p>
+                What scouts see when choosing where a robot starts. JPEG, PNG or WebP, up to 5 MiB. Without a photo they
+                see a schematic.
+              </p>
             </div>
-          {/each}
-          {#if photoStatus}<p class="sp-meta" role="status">{photoStatus}</p>{/if}
+          </header>
+          <div class="ev-body">
+            {#each ['red', 'blue'] as photoAlliance}
+              <div class="sp-alliance">
+                <h4 class={photoAlliance}>{photoAlliance} alliance</h4>
+                <div class="sp-tiles">
+                  {#each startingPositions as position}
+                    <label class="sp-tile" class:has-photo={startPhotos[`${photoAlliance}:${position}`]}>
+                      {#if startPhotos[`${photoAlliance}:${position}`]}
+                        <img
+                          src={startPhotos[`${photoAlliance}:${position}`]}
+                          alt={`${photoAlliance} ${position} starting position`}
+                        />
+                      {:else}
+                        <span class="sp-empty">No photo</span>
+                      {/if}
+                      <span class="sp-cap"
+                        ><b>{position}</b><small
+                          >{startPhotos[`${photoAlliance}:${position}`] ? 'Replace' : 'Upload'}</small
+                        ></span
+                      >
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={photoSaving}
+                        on:change={(event) => uploadStartPhoto(event, photoAlliance, position)}
+                      />
+                    </label>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+            {#if photoStatus}<p class="sp-meta" role="status">{photoStatus}</p>{/if}
+          </div>
         </section>
       </div>
     {:else if section === 'assignments'}
@@ -1216,215 +1204,233 @@
           {/each}
         </div>
         {#if activeAssignmentTab === 'data'}<ScoutAssignmentPanel scoutingType="data" open={true} />{/if}
+        {#if activeAssignmentTab === 'shifts'}<ShiftPlanner />{/if}
         {#if activeAssignmentTab === 'note'}<ScoutAssignmentPanel scoutingType="note" open={true} />{/if}
         {#if activeAssignmentTab === 'prescout'}<PitAssignmentPanel assignmentKind="prescout" open={true} />{/if}
         {#if activeAssignmentTab === 'pit'}<PitAssignmentPanel open={true} />{/if}
       </div>
-    {:else if section === 'training'}
-      <TrainingPanel />
     {:else if section === 'edit'}
       <FormEditor />
     {:else if section === 'scouts'}
-      <section class="scouts" aria-label="People">
-        <div class="scouts-bar">
-          <input
-            class="scout-search"
-            type="search"
-            placeholder="Search name or email"
-            bind:value={userSearch}
-            aria-label="Search people"
-          />
-          <label class="sf"
-            >Role
-            <Select bind:value={roleFilter} aria-label="Filter by role">
-              <option value="all">All roles ({users.length})</option>
-              <option value="none">Not assigned ({roleCounts.none || 0})</option>
-              {#each competitionRoleOptions as opt}<option value={opt}>{roleLabel(opt)} ({roleCounts[opt] || 0})</option
-                >{/each}
-            </Select>
-          </label>
-        </div>
-        {#if canManageAccounts && pendingUsers.length}
-          <div class="pending card" aria-label="Accounts waiting for approval">
-            <h3>Waiting for approval ({pendingUsers.length})</h3>
-            <p class="scouts-note">
-              These accounts signed up but can't see anything yet. Approve the people you know; ban the rest.
-            </p>
-            <ul>
-              {#each pendingUsers as row (row.id)}
-                <li>
-                  <span class="pending-who"><b>{nameOf(row)}</b><small>{row.email || '-'}</small></span>
-                  <span class="pending-actions">
-                    <button
-                      class="btn btn-sm btn-primary"
-                      type="button"
-                      disabled={accountBusyId !== null}
-                      on:click={() => approveUser(row)}>Approve</button
-                    >
-                    <button
-                      class="btn btn-sm btn-outline"
-                      type="button"
-                      disabled={accountBusyId !== null}
-                      on:click={() => rejectUser(row)}>Ban</button
-                    >
-                  </span>
-                </li>
-              {/each}
-            </ul>
+      <div class="people-views" role="tablist" aria-label="People">
+        {#each [['people', 'People'], ['roles', 'Roles'], ['activity', 'Activity']] as [key, label] (key)}
+          <button
+            role="tab"
+            aria-selected={peopleView === key}
+            class:on={peopleView === key}
+            on:click={() => (peopleView = key)}>{label}</button
+          >
+        {/each}
+      </div>
+      {#if peopleView === 'roles'}
+        <RolesPanel />
+      {:else if peopleView === 'activity'}
+        <ActivityPanel />
+      {:else}
+        <section class="scouts" aria-label="People">
+          <div class="scouts-bar">
+            <input
+              class="scout-search"
+              type="search"
+              placeholder="Search name or email"
+              bind:value={userSearch}
+              aria-label="Search people"
+            />
+            <label class="sf"
+              >Role
+              <Select bind:value={roleFilter} aria-label="Filter by role">
+                <option value="all">All roles ({users.length})</option>
+                <option value="none">Not assigned ({roleCounts.none || 0})</option>
+                {#each competitionRoleOptions as opt}<option value={opt}
+                    >{roleLabel(opt)} ({roleCounts[opt] || 0})</option
+                  >{/each}
+              </Select>
+            </label>
           </div>
-        {/if}
-        <p class="scouts-note">
-          Roles and teams save as you pick them, and a person can hold several roles. Competition Lead, Scouting Lead,
-          Strategy Lead, Pit Lead and the Picklist Leads can use Scouting Admin. Data, Performance and Robot Scouts each
-          open their own Match Scouting tab. The team applies to this competition only.
-        </p>
-
-        {#if !visibleUsers.length}
-          <p class="scouts-empty">No scouts match.</p>
-        {:else}
-          <ul class="scout-list">
-            <li class="scout-head" aria-hidden="true">
-              <span></span><span>Person</span><span>Competition roles</span><span>Team</span><span class="admin-head"
-                >Scouting Admin</span
-              >
-            </li>
-            {#each visibleUsers as row (row.id)}
-              <li class="scout-row" class:assigned={drafts[row.id]?.competition_roles?.length}>
-                <span class="av" aria-hidden="true">{initialOf(row)}</span>
-                <div class="who">
-                  {#if editingId === row.id}
-                    <form class="rename" on:submit|preventDefault={() => renameScout(row)}>
-                      <input
-                        id={`scout-name-${row.id}`}
-                        maxlength="120"
-                        placeholder="Full name"
-                        bind:value={nameDrafts[row.id]}
-                        aria-label={`Name for ${row.email}`}
-                      />
+          {#if canManageAccounts && pendingUsers.length}
+            <div class="pending card" aria-label="Accounts waiting for approval">
+              <h3>Waiting for approval ({pendingUsers.length})</h3>
+              <p class="scouts-note">
+                These accounts signed up but can't see anything yet. Approve the people you know; ban the rest.
+              </p>
+              <ul>
+                {#each pendingUsers as row (row.id)}
+                  <li>
+                    <span class="pending-who"><b>{nameOf(row)}</b><small>{row.email || '-'}</small></span>
+                    <span class="pending-actions">
                       <button
                         class="btn btn-sm btn-primary"
-                        type="submit"
-                        disabled={savingNameId !== null ||
-                          !nameDrafts[row.id]?.trim() ||
-                          nameDrafts[row.id] === row.full_name}>Save</button
+                        type="button"
+                        disabled={accountBusyId !== null}
+                        on:click={() => approveUser(row)}>Approve</button
                       >
-                      <button class="btn btn-sm" type="button" on:click={() => (editingId = null)}>Cancel</button>
-                    </form>
-                  {:else}
-                    <button
-                      type="button"
-                      class="name"
-                      title="Click to rename"
-                      on:click={() => {
-                        editingId = row.id;
-                        if (!nameDrafts[row.id]) nameDrafts[row.id] = scoutDisplayName(row) || '';
-                      }}>{scoutDisplayName(row) || 'Unnamed'}</button
-                    >
-                  {/if}
-                  <small
-                    >{row.email || '-'}{#if row.role === 'admin'}
-                      · Admin{/if}{#if !row.approved}
-                      · Waiting for approval{/if}</small
-                  >
-                  {#if canManageAccounts}
-                    {#if passwordForId === row.id}
-                      <form class="rename" on:submit|preventDefault={() => savePassword(row)}>
+                      <button
+                        class="btn btn-sm btn-outline"
+                        type="button"
+                        disabled={accountBusyId !== null}
+                        on:click={() => rejectUser(row)}>Ban</button
+                      >
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+          <p class="scouts-note">
+            Roles and teams save as you pick them, and a person can hold several roles. Competition Lead, Scouting Lead,
+            Strategy Lead, Pit Lead and the Picklist Leads can use Scouting Admin. Data, Performance and Robot Scouts
+            each open their own Match Scouting tab. The team applies to this competition only.
+          </p>
+
+          {#if !visibleUsers.length}
+            <p class="scouts-empty">No scouts match.</p>
+          {:else}
+            <ul class="scout-list">
+              <li class="scout-head" aria-hidden="true">
+                <span></span><span>Person</span><span>Competition roles</span><span>Team</span><span class="admin-head"
+                  >Scouting Admin</span
+                >
+              </li>
+              {#each visibleUsers as row (row.id)}
+                <li class="scout-row" class:assigned={drafts[row.id]?.competition_roles?.length}>
+                  <span class="av" aria-hidden="true">{initialOf(row)}</span>
+                  <div class="who">
+                    {#if editingId === row.id}
+                      <form class="rename" on:submit|preventDefault={() => renameScout(row)}>
                         <input
-                          type="password"
-                          autocomplete="new-password"
-                          minlength="8"
-                          placeholder="New password (8+ characters)"
-                          bind:value={passwordDraft}
-                          aria-label={`New password for ${row.email}`}
+                          id={`scout-name-${row.id}`}
+                          maxlength="120"
+                          placeholder="Full name"
+                          bind:value={nameDrafts[row.id]}
+                          aria-label={`Name for ${row.email}`}
                         />
                         <button
                           class="btn btn-sm btn-primary"
                           type="submit"
-                          disabled={accountBusyId !== null || passwordDraft.length < 8}>Set</button
+                          disabled={savingNameId !== null ||
+                            !nameDrafts[row.id]?.trim() ||
+                            nameDrafts[row.id] === row.full_name}>Save</button
                         >
-                        <button class="btn btn-sm" type="button" on:click={() => (passwordForId = null)}>Cancel</button>
+                        <button class="btn btn-sm" type="button" on:click={() => (editingId = null)}>Cancel</button>
                       </form>
                     {:else}
-                      <span class="account-actions">
-                        <button
-                          type="button"
-                          class="link-btn"
-                          disabled={accountBusyId !== null}
-                          on:click={() => {
-                            passwordForId = row.id;
-                            passwordDraft = '';
-                          }}>Set password</button
-                        >
-                        {#if me?.role === 'admin' && row.id !== me?.id}
-                          <button
-                            type="button"
-                            class="link-btn"
-                            disabled={accountBusyId !== null}
-                            on:click={() => toggleAdmin(row)}
-                            >{row.role === 'admin' ? 'Remove admin' : 'Make admin'}</button
-                          >
-                        {/if}
-                        {#if row.approved && row.role !== 'admin' && row.id !== me?.id}
-                          <button
-                            type="button"
-                            class="link-btn"
-                            disabled={accountBusyId !== null}
-                            on:click={() => approveUser(row, false)}>Take away access</button
-                          >
-                        {/if}
-                      </span>
-                    {/if}
-                  {/if}
-                </div>
-                <div class="roles">
-                  {#each drafts[row.id].competition_roles as role (role)}
-                    <span class="role-chip"
-                      >{roleLabel(role)}<button
+                      <button
                         type="button"
-                        aria-label={`Remove ${roleLabel(role)} from ${row.full_name || row.email}`}
-                        on:click={() => removeRole(row, role)}>&times;</button
-                      ></span
+                        class="name"
+                        title="Click to rename"
+                        on:click={() => {
+                          editingId = row.id;
+                          if (!nameDrafts[row.id]) nameDrafts[row.id] = scoutDisplayName(row) || '';
+                        }}>{scoutDisplayName(row) || 'Unnamed'}</button
+                      >
+                    {/if}
+                    <small
+                      >{row.email || '-'}{#if row.role === 'admin'}
+                        · Admin{/if}{#if !row.approved}
+                        · Waiting for approval{/if}</small
                     >
-                  {/each}
+                    {#if canManageAccounts}
+                      {#if passwordForId === row.id}
+                        <form class="rename" on:submit|preventDefault={() => savePassword(row)}>
+                          <input
+                            type="password"
+                            autocomplete="new-password"
+                            minlength="8"
+                            placeholder="New password (8+ characters)"
+                            bind:value={passwordDraft}
+                            aria-label={`New password for ${row.email}`}
+                          />
+                          <button
+                            class="btn btn-sm btn-primary"
+                            type="submit"
+                            disabled={accountBusyId !== null || passwordDraft.length < 8}>Set</button
+                          >
+                          <button class="btn btn-sm" type="button" on:click={() => (passwordForId = null)}
+                            >Cancel</button
+                          >
+                        </form>
+                      {:else}
+                        <span class="account-actions">
+                          <button
+                            type="button"
+                            class="link-btn"
+                            disabled={accountBusyId !== null}
+                            on:click={() => {
+                              passwordForId = row.id;
+                              passwordDraft = '';
+                            }}>Set password</button
+                          >
+                          {#if me?.role === 'admin' && row.id !== me?.id}
+                            <button
+                              type="button"
+                              class="link-btn"
+                              disabled={accountBusyId !== null}
+                              on:click={() => toggleAdmin(row)}
+                              >{row.role === 'admin' ? 'Remove admin' : 'Make admin'}</button
+                            >
+                          {/if}
+                          {#if row.approved && row.role !== 'admin' && row.id !== me?.id}
+                            <button
+                              type="button"
+                              class="link-btn"
+                              disabled={accountBusyId !== null}
+                              on:click={() => approveUser(row, false)}>Take away access</button
+                            >
+                          {/if}
+                        </span>
+                      {/if}
+                    {/if}
+                  </div>
+                  <div class="roles">
+                    {#each drafts[row.id].competition_roles as role (role)}
+                      <span class="role-chip"
+                        >{roleLabel(role)}<button
+                          type="button"
+                          aria-label={`Remove ${roleLabel(role)} from ${row.full_name || row.email}`}
+                          on:click={() => removeRole(row, role)}>&times;</button
+                        ></span
+                      >
+                    {/each}
+                    <Select
+                      compact
+                      wrap="sel-role"
+                      aria-label={`Add a competition role for ${row.email}`}
+                      bind:value={drafts[row.id].adding_role}
+                      on:change={() => addRole(row)}
+                    >
+                      <option value="">{drafts[row.id].competition_roles.length ? 'Add role' : 'Not assigned'}</option>
+                      {#each competitionRoleOptions.filter((opt) => !drafts[row.id].competition_roles.includes(opt)) as opt}<option
+                          value={opt}>{roleLabel(opt)}</option
+                        >{/each}
+                    </Select>
+                  </div>
                   <Select
                     compact
-                    wrap="sel-role"
-                    aria-label={`Add a competition role for ${row.email}`}
-                    bind:value={drafts[row.id].adding_role}
-                    on:change={() => addRole(row)}
+                    wide
+                    wrap="sel-team"
+                    aria-label={`FRC team for ${row.email}`}
+                    bind:value={drafts[row.id].frc_team}
+                    on:change={() => queueSaveRole(row)}
                   >
-                    <option value="">{drafts[row.id].competition_roles.length ? 'Add role' : 'Not assigned'}</option>
-                    {#each competitionRoleOptions.filter((opt) => !drafts[row.id].competition_roles.includes(opt)) as opt}<option
-                        value={opt}>{roleLabel(opt)}</option
-                      >{/each}
+                    <option value="">Not set</option>
+                    {#each frcTeamOptions as opt}<option value={opt}>{opt}</option>{/each}
                   </Select>
-                </div>
-                <Select
-                  compact
-                  wide
-                  wrap="sel-team"
-                  aria-label={`FRC team for ${row.email}`}
-                  bind:value={drafts[row.id].frc_team}
-                  on:change={() => queueSaveRole(row)}
-                >
-                  <option value="">Not set</option>
-                  {#each frcTeamOptions as opt}<option value={opt}>{opt}</option>{/each}
-                </Select>
-                <!-- Follows the roles picked above, using the same rule as the Scouting Admin API. -->
-                {#if hasScoutingAdmin(row, drafts[row.id].competition_roles)}
-                  <span class="admin-cell yes"
-                    ><Check size={16} aria-hidden="true" /><span class="admin-label">Scouting Admin</span></span
-                  >
-                {:else}
-                  <span class="admin-cell no"
-                    ><span aria-hidden="true">—</span><span class="sr-only">No Scouting Admin</span></span
-                  >
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </section>
+                  <!-- Follows the roles picked above, using the same rule as the Scouting Admin API. -->
+                  {#if hasScoutingAdmin(row, drafts[row.id].competition_roles)}
+                    <span class="admin-cell yes"
+                      ><Check size={16} aria-hidden="true" /><span class="admin-label">Scouting Admin</span></span
+                    >
+                  {:else}
+                    <span class="admin-cell no"
+                      ><span aria-hidden="true">—</span><span class="sr-only">No Scouting Admin</span></span
+                    >
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+      {/if}
     {:else if section === 'data'}
       <div class="sp-grid">
         <section class="sp-panel">
@@ -1505,6 +1511,7 @@
           {#if googleSheetLastSyncError}<p class="sp-error">{googleSheetLastSyncError}</p>{/if}
         </section>
       </div>
+      <TeamRankingDefensePanel reports={matchReports} />
       <MatchKeyReview />
       <div class="data-browser">
         <ScoutDataBrowser reports={matchReports} onRemove={removeMatchReport} />
@@ -1524,94 +1531,26 @@
           >
         </section>
       </div>
-    {:else if section === 'deadlines'}
-      <ScoutDeadlines {eventKey} {matchReports} />
-    {:else if section === 'extra'}
-      <p class="sp-lede">Tools that are rarely needed. Nothing here is required to run an event.</p>
-      <AdminModelsPanel
-        {smartFuelModel}
-        {quickScoutModel}
-        saving={savingSmartFuel}
-        onToggleSmartFuel={() => setSmartFuelAlgorithmEnabled(!smartFuelModel.enabled)}
-      />
-    {:else if section === 'add'}
-      <AdminAddUser />
     {:else if section === 'team'}
       <TeamSettingsPanel />
     {:else}
-      <div class="stats-grid">
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Pit Scouted</div>
-            <div class="stat-value">{metrics.pit.percent}%</div>
-            <div class="stat-sub">
-              {metrics.pit.completed_teams ?? metrics.pit.scouted_teams}/{metrics.pit.total_teams} teams - Pending {metrics
-                .pit.pending_teams ?? 0}, Needs photo {metrics.pit.needs_photo_teams ?? 0}
-            </div>
+      <!-- The event at a glance: how much is covered, not who did what. -->
+      <section class="ov-tiles" aria-label="Event coverage">
+        {#each [{ label: 'Matches scouted', percent: metrics.data.scouted_percent, detail: `${metrics.data.scouted_matches} of ${metrics.data.total_matches} matches have reports` }, { label: 'Pit scouted', percent: metrics.pit.percent, detail: `${metrics.pit.completed_teams ?? metrics.pit.scouted_teams} of ${metrics.pit.total_teams} teams` }, { label: 'Assignments set', percent: metrics.data.assigned_percent, detail: `${metrics.data.assigned_matches} of ${metrics.data.total_matches} matches have scouts` }] as tile (tile.label)}
+          <div class="ov-tile">
+            <span class="ov-label">{tile.label}</span>
+            <b class="ov-value">{tile.percent ?? 0}%</b>
+            <div class="ov-bar" aria-hidden="true"><i style:width={`${Math.min(100, tile.percent ?? 0)}%`}></i></div>
+            <small>{tile.detail}</small>
           </div>
+        {/each}
+        <div class="ov-tile">
+          <span class="ov-label">Match reports</span>
+          <b class="ov-value">{metrics.match?.reports || 0}</b>
+          <small>{metrics.match?.matches || 0} matches · {metrics.match?.teams || 0} teams</small>
         </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Match Assigned</div>
-            <div class="stat-value">{metrics.data.assigned_percent}%</div>
-            <div class="stat-sub">{metrics.data.assigned_matches}/{metrics.data.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Note Assigned</div>
-            <div class="stat-value">{metrics.note.assigned_percent}%</div>
-            <div class="stat-sub">{metrics.note.assigned_matches}/{metrics.note.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Quick Assigned</div>
-            <div class="stat-value">{metrics.quick.assigned_percent}%</div>
-            <div class="stat-sub">{metrics.quick.assigned_matches}/{metrics.quick.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Match Scouted</div>
-            <div class="stat-value">{metrics.data.scouted_percent}%</div>
-            <div class="stat-sub">{metrics.data.scouted_matches}/{metrics.data.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Note Scouted</div>
-            <div class="stat-value">{metrics.note.scouted_percent}%</div>
-            <div class="stat-sub">{metrics.note.scouted_matches}/{metrics.note.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Quick Scouted</div>
-            <div class="stat-value">{metrics.quick.scouted_percent}%</div>
-            <div class="stat-sub">{metrics.quick.scouted_matches}/{metrics.quick.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Match Reports</div>
-            <div class="stat-value">{metrics.match?.reports || 0}</div>
-            <div class="stat-sub">{metrics.match?.matches || 0} matches / {metrics.match?.teams || 0} teams</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Missed Shifts</div>
-            <div class="stat-value">{metrics.overall.missed_shift_percent}%</div>
-            <div class="stat-sub">
-              Data {metrics.data.missed_shifts} / Note {metrics.note.missed_shifts} / Quick {metrics.quick
-                .missed_shifts}
-            </div>
-          </div>
-        </div>
-      </div>
+      </section>
 
-      <!-- Scouting at a glance (#122): same charts on desktop (two columns) and phones (one). -->
       <section class="admin-charts" aria-label="Scouting charts">
         <figure class="card chart-card wide">
           <h3>Robots reported per match</h3>
@@ -1619,74 +1558,15 @@
             ariaLabel="Robots with a report in each match, out of six"
             max={6}
             digits={0}
-            series={[
-              { name: 'Robots reported', color: 'var(--chart-blue)', points: robotsReportedPerMatch(matchReports) }
-            ]}
+            series={[{ name: 'Robots reported', color: 'var(--accent)', points: robotsReportedPerMatch(matchReports) }]}
             reference={{ value: 6, label: 'All six' }}
           />
         </figure>
         <figure class="card chart-card">
-          <h3>Reports per scout</h3>
-          <CountBars rows={reportsPerScout(matchReports).slice(0, 12)} emptyText="No match reports yet." />
-        </figure>
-        <figure class="card chart-card">
           <h3>Report kinds</h3>
-          <CountBars rows={reportKindMix(matchReports)} color="var(--chart-orange)" emptyText="No match reports yet." />
-          <h3 class="chart-sub">Strong disagreements</h3>
-          <p class="chart-note">Reports whose ball count is far from another scout's on the same robot and match.</p>
-          <CountBars
-            rows={disagreementsPerScout(matchReports)}
-            color="var(--chart-danger)"
-            emptyText="No strong disagreements."
-          />
+          <CountBars rows={reportKindMix(matchReports)} color="var(--accent)" emptyText="No match reports yet." />
         </figure>
       </section>
-
-      <div class="card section-card">
-        <div class="section-header">
-          <h3>Missed Matches</h3>
-          <a href="/scouting-admin/deadlines">Set deadlines and see who is late</a>
-        </div>
-        {#if !missedMatches.length}
-          <div class="empty-state compact-empty">No missed matches detected yet.</div>
-        {:else}
-          <div class="table-wrap">
-            <div class="table-container">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Match</th>
-                    <th>Data Misses</th>
-                    <th>Note Misses</th>
-                    <th>Quick Misses</th>
-                    <th>Missed Assignments</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each missedMatches as m}
-                    <tr>
-                      <td data-label="Match">#{m.match_number}</td>
-                      <td data-label="Data Misses">{m.data_missed_count}</td>
-                      <td data-label="Note Misses">{m.note_missed_count}</td>
-                      <td data-label="Quick Misses">{m.quick_missed_count}</td>
-                      <td data-label="Missed Assignments">
-                        <div class="missed-list">
-                          {#each m.missed_assignments as a}
-                            <div>
-                              {a.scouting_type} - {String(a.team_key || '').replace(/^frc/i, '')} - {a.user_name ||
-                                a.assigned_user}
-                            </div>
-                          {/each}
-                        </div>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        {/if}
-      </div>
     {/if}
 
     <slot />
@@ -1694,23 +1574,199 @@
 {/if}
 
 <style>
-  .sp-link {
+  .people-views {
+    display: inline-flex;
+    justify-self: start;
+    width: max-content;
+    max-width: 100%;
+    gap: 2px;
+    margin-bottom: var(--space-4);
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+  }
+  .people-views button {
+    min-height: 2rem;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .people-views button.on {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
+  }
+  /* Event setup: one column of numbered steps under a summary of the current event. */
+  .ev {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 56rem;
+  }
+  .ev-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    overflow: hidden;
+  }
+  .ev-summary > div {
+    display: grid;
+    gap: 4px;
+    padding: var(--space-3) var(--space-4);
+    border-left: 1px solid var(--border);
+  }
+  .ev-summary > div:first-child {
+    border-left: 0;
+  }
+  .ev-k {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .ev-summary b {
+    color: var(--text-strong, var(--text));
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .ev-code {
+    font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .ev-step {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+  }
+  .ev-head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+  }
+  .ev-num {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--text-strong, var(--text));
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .ev-head h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0.15rem 0 0;
+    font-size: 1.05rem;
+    font-weight: 500;
+  }
+  .ev-head p {
+    margin: var(--space-1) 0 0;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  .ev-body {
+    display: grid;
+    gap: var(--space-2);
+    padding-left: calc(1.75rem + var(--space-3));
+  }
+  .ev-field {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+  .ev-more {
+    margin-top: var(--space-2);
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-3);
+  }
+  .ev-more summary {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+  .ev-more summary:hover {
+    color: var(--text);
+  }
+  .ev-more-body {
     display: grid;
     gap: var(--space-2);
     margin-top: var(--space-3);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
   }
-  .sp-link h4 {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-2);
-    margin: 0;
-  }
-  .sp-link p {
-    margin: 0;
+  .ev-more-body p {
+    margin: 0 0 var(--space-1);
     color: var(--text-muted);
-    font-size: 0.82rem;
+    font-size: 0.85rem;
+  }
+  @media (max-width: 700px) {
+    .ev-body {
+      padding-left: 0;
+    }
+    .ev-summary > div:nth-child(odd) {
+      border-left: 0;
+    }
+  }
+  .ov-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--space-3);
+  }
+  .ov-tile {
+    display: grid;
+    gap: var(--space-2);
+    align-content: start;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+  }
+  .ov-label {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .ov-value {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-strong, var(--text));
+    font-variant-numeric: tabular-nums;
+  }
+  .ov-bar {
+    height: 0.35rem;
+    border-radius: var(--radius-full);
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+  .ov-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+  }
+  .ov-tile small {
+    color: var(--text-muted);
+    font-size: 0.8rem;
   }
   .sp-optional {
     padding: 0.05rem 0.45rem;
@@ -1772,23 +1828,6 @@
 
   .scouting-header-content {
     min-width: 260px;
-  }
-
-  /* The Season control is a label-over-select stack; Refresh Dashboard is a
-     single-line button with no label. Left at the container's default
-     stretch, the button grows to match the stack's full height and its text
-     centers awkwardly instead of sitting level with the select. Align both
-     to their bottom edge so the button lines up with the select itself. */
-  .scouting-header .page-actions {
-    align-items: flex-end;
-  }
-
-  /* SeasonFilter wraps its select in a .form-group, which carries a
-     16px bottom margin meant for stacked form layouts. In this header that
-     margin is part of the flex item's box, so bottom-aligning left the
-     select's visible edge sitting 16px above the buttons beside it. */
-  .scouting-header .page-actions :global(.form-group) {
-    margin-bottom: 0;
   }
 
   .match-scouting-export {
@@ -1924,44 +1963,47 @@
     flex-direction: column;
     gap: var(--gap-3);
   }
+  /* The assignment boards: a pill switcher, like the other sub-tabs in Scouting Admin. */
   .assignment-tab-picker {
-    display: flex;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-self: flex-start;
+    gap: 2px;
+    padding: 3px;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
   }
   .assignment-tab-btn {
-    flex: 1 1 0;
-    min-width: 0;
+    min-height: 2rem;
+    padding: 0 1rem;
     border: 0;
-    border-right: 1px solid var(--border);
-    background: var(--surface-1);
-    color: var(--text-muted);
+    border-radius: var(--radius-full);
+    background: none;
+    color: var(--text-secondary);
     font: inherit;
-    font-weight: 600;
-    font-size: var(--font-sm);
-    padding: var(--space-2) var(--space-2);
-    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 500;
     cursor: pointer;
-  }
-  .assignment-tab-btn:last-child {
-    border-right: 0;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
   .assignment-tab-btn:hover {
-    background: var(--surface-2);
-    color: var(--text);
+    color: var(--text-strong, var(--text));
   }
   .assignment-tab-btn.active {
-    background: var(--accent-subtle);
-    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
   }
   @media (max-width: 640px) {
     .assignment-tab-picker {
-      flex-wrap: wrap;
+      align-self: stretch;
+      border-radius: var(--radius-lg);
     }
     .assignment-tab-btn {
-      flex: 1 1 33%;
-      border-bottom: 1px solid var(--border);
+      flex: 1 1 30%;
+      min-height: var(--tap-min);
     }
   }
 
@@ -1989,71 +2031,74 @@
     .table-container {
       overflow-x: visible;
     }
-    .table thead {
-      display: none;
-    }
-    .table,
-    .table tbody,
-    .table tr,
-    .table td {
-      display: block;
-      width: 100%;
-    }
-    .table tr {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      margin-bottom: var(--space-3);
-      padding: var(--space-2) var(--space-3);
-    }
-    .table td {
-      border: 0;
-      border-bottom: 1px solid var(--border);
-      padding: var(--space-2) 0;
-    }
-    .table td:last-child {
-      border-bottom: 0;
-    }
-    .table td::before {
-      content: attr(data-label);
-      display: block;
-      color: var(--text-muted);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 2px;
-    }
   }
 
   .data-browser {
     margin: var(--space-5) 0;
   }
+  /* The section switcher: pill tabs on a hairline, with the event and a refresh button at the end. */
+  .admin-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
   .admin-tabs {
     display: flex;
-    gap: var(--space-1);
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
     flex-wrap: wrap;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: var(--space-4);
   }
   .admin-tab {
-    padding: var(--space-3) var(--space-4);
+    padding: 0.45rem 0.9rem;
+    border-radius: var(--radius-full);
     color: var(--text-secondary);
     text-decoration: none;
+    font-size: 0.92rem;
     font-weight: 500;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     transition:
       color 0.15s ease,
-      background 0.15s ease;
+      background-color 0.15s ease;
   }
   .admin-tab:hover {
-    color: var(--text);
-    background: var(--surface-2);
+    color: var(--text-strong, var(--text));
+    background: color-mix(in srgb, var(--text) 6%, transparent);
   }
   .admin-tab.active {
-    color: var(--accent-strong);
-    border-bottom-color: var(--accent);
-    background: var(--accent-subtle);
+    color: var(--text-strong, var(--text));
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .admin-bar-end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: none;
+  }
+  .admin-refresh {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .admin-refresh:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .admin-refresh :global(.spin) {
+    animation: admin-spin 0.9s linear infinite;
+  }
+  @keyframes admin-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   @media (max-width: 700px) {
     .admin-tabs {
@@ -2372,29 +2417,16 @@
     }
   }
 
-  .sp-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
-    align-items: start;
-  }
   .sp-panel {
     display: grid;
-    gap: var(--space-3);
-    padding: var(--space-5);
+    gap: var(--space-2);
+    padding: var(--space-4);
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
   }
   .sp-panel.sp-wide {
     grid-column: 1 / -1;
-  }
-  .sp-panel header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0 var(--space-3);
   }
   .sp-panel h3 {
     margin: 0;
@@ -2446,22 +2478,8 @@
     color: var(--text-muted) !important;
     font-size: 0.85rem !important;
   }
-  .sp-meta b {
-    color: var(--text);
-    font-weight: 600;
-  }
   .sp-row :global(.sel-event) {
     flex: 1;
-  }
-  .sp-create {
-    display: grid;
-    gap: var(--space-2);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
-  }
-  .sp-create h4 {
-    margin: 0;
-    font-size: 0.95rem;
   }
   .sp-code-input {
     text-transform: uppercase;
@@ -2553,19 +2571,21 @@
     font-size: 0.82rem;
   }
   .sp-cap {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: var(--space-2);
+    display: grid;
+    gap: 1px;
     padding: var(--space-2) var(--space-3);
   }
   .sp-cap b {
     font-weight: 500;
     text-transform: capitalize;
-    font-size: 0.88rem;
+    font-size: 0.85rem;
   }
   .sp-cap small {
-    color: var(--accent-strong);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .sp-tile:hover .sp-cap small {
+    color: var(--text);
   }
   .sp-tile input {
     position: absolute;
@@ -2596,7 +2616,7 @@
     }
   }
 
-  /* Phone (#124) */
+  /* Phone */
   .adm-picker {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2651,9 +2671,6 @@
     color: var(--text-secondary);
   }
   @media (max-width: 900px) {
-    .scouting-header p {
-      display: none;
-    }
     .sp-grid {
       grid-template-columns: 1fr;
     }
@@ -2665,13 +2682,12 @@
     .sp-row > :global(:not(.sr-only)) {
       width: 100%;
     }
-    .page-actions .btn,
     .sp-panel .btn {
       min-height: var(--tap-min);
     }
   }
 
-  /* Phone: wrap, never cut text (#124). On phones these lines wrap instead of ending in "...". */
+  /* Phone: wrap, never cut text. On phones these lines wrap instead of ending in "...". */
   @media (max-width: 900px) {
     .who small,
     .name {
@@ -2701,9 +2717,6 @@
     margin: 0;
     font-size: 1rem;
   }
-  .chart-card .chart-sub {
-    margin-top: var(--space-3);
-  }
   .chart-note {
     margin: 0;
     color: var(--text-muted);
@@ -2714,22 +2727,6 @@
       grid-template-columns: 1fr;
       gap: var(--space-3);
       margin: var(--space-3) 0;
-    }
-    .stats-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-    }
-    .stats-grid .stat-card {
-      padding: 8px;
-    }
-    .stats-grid .stat-label {
-      font-size: 0.75rem;
-    }
-    .stats-grid .stat-value {
-      font-size: 1.3rem;
-    }
-    .stats-grid .stat-sub {
-      display: none;
     }
   }
 </style>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStrategySchedule, teamAlliance } from './strategySchedule.js';
+import { buildStrategySchedule, matchOrder, teamAlliance } from './strategySchedule.js';
 
 const team = 'frc5940';
 const match = (number, extra = {}) => ({
@@ -41,5 +41,18 @@ describe('strategy schedule', () => {
     );
     expect(schedule.upcoming).toEqual([]);
     expect(schedule.played.map((entry) => entry.match.match_number)).toEqual([2, 1]);
+  });
+});
+
+describe('matchOrder', () => {
+  it('sorts by time, then in play order, so an untimed playoff never lands among the quals', () => {
+    const qm2 = match(2);
+    const qm9 = match(9);
+    const sf1 = { key: '2026test_sf1m1', comp_level: 'sf', set_number: 1, match_number: 1 };
+    expect([sf1, qm9, qm2].sort(matchOrder).map((entry) => entry.key)).toEqual([
+      '2026test_qm2',
+      '2026test_qm9',
+      '2026test_sf1m1'
+    ]);
   });
 });

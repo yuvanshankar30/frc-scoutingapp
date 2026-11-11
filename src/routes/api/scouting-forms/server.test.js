@@ -84,7 +84,7 @@ const read = async (response) => ({ status: response.status, ...(await response.
 const good = { ...createQuestion('buttons', 'teleop'), label: 'Climbed?' };
 
 beforeEach(() => {
-  actor = { actorId: 'u1', canAdminister: true };
+  actor = { actorId: 'u1', canAdminister: true, can: () => true };
   tables = {
     scouting_form_versions: [],
     scouting_form_drafts: [],
@@ -99,7 +99,7 @@ describe('scouting forms API', () => {
   });
 
   it('keeps drafts private to admins', async () => {
-    actor = { actorId: 'u2', canAdminister: false };
+    actor = { actorId: 'u2', canAdminister: false, can: () => false };
     expect((await read(await get('form=match&admin=1'))).status).toBe(403);
     expect(
       (await read(await post({ action: 'save-draft', form: 'match', schema: { questions: [good] } }))).status
@@ -170,7 +170,11 @@ describe('scouting forms API', () => {
     };
     await post({ action: 'publish', form: 'match', schema, base_version: 0 });
     const live = (await read(await get('form=match'))).data.schema;
-    expect(live.core).toEqual({ 'teleop.notes': { label: 'Anything to add?', hidden: true } });
+    // Every built-in can be hidden now, Observed roles included: games change, so nothing is locked.
+    expect(live.core).toEqual({
+      'teleop.notes': { label: 'Anything to add?', hidden: true },
+      'teleop.roles': { hidden: true }
+    });
     expect(live.order.teleop).toEqual([good.id, 'core:teleop.notes']);
   });
 

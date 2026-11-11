@@ -2,7 +2,7 @@
 
 People sign in at `/login` with their email and password, checked by Supabase Auth. A bare username (no `@`) is
 shorthand for an address at the username domain (`PUBLIC_USERNAME_EMAIL_DOMAIN`, default `scouting.local`), which is
-how shared logins made in [Add user](../scouting-admin/add-user.md) work. Signing out only signs out this device, and
+how shared logins (for example `pit1` on a scouting tablet) work. Signing out only signs out this device, and
 asks first if there are scouting reports on the device that haven't been sent yet.
 
 The sign-in page shows the team's name, app name, logo and colors from [Team settings](../scouting-admin/team-settings.md),
