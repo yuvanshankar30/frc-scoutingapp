@@ -33,6 +33,7 @@
   import { reportKindMix, robotsReportedPerMatch } from '$lib/scouting/adminCharts.js';
   import BottomSheet from '$lib/components/common/BottomSheet.svelte';
   import RolesPanel from '$lib/components/admin/RolesPanel.svelte';
+  import ShiftPlanner from '$lib/components/scouting/ShiftPlanner.svelte';
   import ActivityPanel from '$lib/components/admin/ActivityPanel.svelte';
   import {
     CalendarClock,
@@ -126,10 +127,11 @@
   // Which assignment board is showing - a picker instead of five stacked
   // accordions the admin had to scroll past and open one at a time.
   const ASSIGNMENT_TABS = [
-    { key: 'data', label: 'Data Scout' },
-    { key: 'note', label: 'Note Scout' },
-    { key: 'prescout', label: 'Prescout' },
-    { key: 'pit', label: 'Pit Scout' }
+    { key: 'data', label: 'Match scouting' },
+    { key: 'shifts', label: 'Shifts' },
+    { key: 'note', label: 'Note scouting' },
+    { key: 'prescout', label: 'Prescouting' },
+    { key: 'pit', label: 'Pit scouting' }
   ];
   let activeAssignmentTab = 'data';
 
@@ -1202,6 +1204,7 @@
           {/each}
         </div>
         {#if activeAssignmentTab === 'data'}<ScoutAssignmentPanel scoutingType="data" open={true} />{/if}
+        {#if activeAssignmentTab === 'shifts'}<ShiftPlanner />{/if}
         {#if activeAssignmentTab === 'note'}<ScoutAssignmentPanel scoutingType="note" open={true} />{/if}
         {#if activeAssignmentTab === 'prescout'}<PitAssignmentPanel assignmentKind="prescout" open={true} />{/if}
         {#if activeAssignmentTab === 'pit'}<PitAssignmentPanel open={true} />{/if}
@@ -1960,44 +1963,47 @@
     flex-direction: column;
     gap: var(--gap-3);
   }
+  /* The assignment boards: a pill switcher, like the other sub-tabs in Scouting Admin. */
   .assignment-tab-picker {
-    display: flex;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-self: flex-start;
+    gap: 2px;
+    padding: 3px;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
   }
   .assignment-tab-btn {
-    flex: 1 1 0;
-    min-width: 0;
+    min-height: 2rem;
+    padding: 0 1rem;
     border: 0;
-    border-right: 1px solid var(--border);
-    background: var(--surface-1);
-    color: var(--text-muted);
+    border-radius: var(--radius-full);
+    background: none;
+    color: var(--text-secondary);
     font: inherit;
-    font-weight: 600;
-    font-size: var(--font-sm);
-    padding: var(--space-2) var(--space-2);
-    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 500;
     cursor: pointer;
-  }
-  .assignment-tab-btn:last-child {
-    border-right: 0;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
   .assignment-tab-btn:hover {
-    background: var(--surface-2);
-    color: var(--text);
+    color: var(--text-strong, var(--text));
   }
   .assignment-tab-btn.active {
-    background: var(--accent-subtle);
-    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
   }
   @media (max-width: 640px) {
     .assignment-tab-picker {
-      flex-wrap: wrap;
+      align-self: stretch;
+      border-radius: var(--radius-lg);
     }
     .assignment-tab-btn {
-      flex: 1 1 33%;
-      border-bottom: 1px solid var(--border);
+      flex: 1 1 30%;
+      min-height: var(--tap-min);
     }
   }
 

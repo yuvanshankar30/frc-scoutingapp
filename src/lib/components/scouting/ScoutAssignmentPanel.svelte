@@ -562,9 +562,13 @@
             title="Give each unassigned team to the scout with the least work, avoiding two robots in one match"
             >Spread unassigned</button
           >
-          <button class="btn btn-primary btn-sm" on:click={publishAssignments} disabled={!hasDraftChanges || saving}
-            >{saving ? 'Publishing...' : hasDraftChanges ? 'Publish changes' : 'Published'}</button
-          >
+          {#if hasDraftChanges || saving}
+            <button class="btn btn-primary btn-sm" on:click={publishAssignments} disabled={saving}
+              >{saving ? 'Publishing...' : 'Publish changes'}</button
+            >
+          {:else}
+            <span class="published-pill" title="Everything on this board is published">Published</span>
+          {/if}
         {/if}
         <button class="btn btn-outline btn-sm" on:click={() => refreshAll()} disabled={!ready || loading || saving}
           >{hasDraftChanges ? 'Discard' : 'Refresh'}</button
@@ -619,7 +623,6 @@
                     >{/each}
                 </Select>
               </label>
-              <span class="kind-key">In the match grid: D Data, P Performance, R Robot scout</span>
             {/if}
             <label class="sort"
               >Sort
@@ -782,6 +785,7 @@
 
     <details class="table-accordion">
       <summary>Match-by-match table ({matches.length} match{matches.length === 1 ? '' : 'es'})</summary>
+      {#if scoutingType === 'data'}<p class="kind-key">D Data · P Performance · R Robot scout</p>{/if}
       <div class="scroll-x">
         <table class="assignment-table">
           <thead>
@@ -1140,8 +1144,19 @@
     font-weight: 500;
   }
   .kind-key {
+    margin: var(--space-2) 0;
     color: var(--text-muted);
-    font-size: max(var(--font-xs), var(--text-min));
+    font-size: 0.8rem;
+  }
+  .published-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.9rem;
+    padding: 0 0.8rem;
+    border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
   }
   .chip .num {
     padding: 0.3rem 0.35rem 0.3rem 0.5rem;
