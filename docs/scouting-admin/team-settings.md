@@ -45,9 +45,18 @@ also turns it into the CSS variables the page head carries for both themes.
 | Setting | Choices |
 | --- | --- |
 | Palette | Ink and cream, Graphite, Midnight, Forest, Plum, Ember: page and card colors for dark and light |
-| Second color | Same as the brand color, or any color: the serif word in the app name and the background glow |
+| Secondary color | Optional: the serif word in the app name and the background glow (the brand color when empty) |
+| Highlight color | Optional: the second series in charts (the secondary color when empty) |
+| Dark / light background | Optional, per theme: the page background; cards, borders and text colors are built from it |
 | Font | Space Grotesk, Inter, Barlow (condensed headings), serif headings, system |
 | Corners | Round, soft, square |
 | Badge | Shape (rounded square, circle, square), style (ink, outline, filled) and text (up to 4 characters, the team number by default); shown when there is no logo |
 | Tagline | Up to 80 characters, under the app name on the sign-in page |
 | Switches | Serif accent in the app name; background glow |
+
+Every color field opens a picker with a color wheel, a brightness slider, R / G / B and hex fields, and quick picks
+(`src/lib/components/common/ColorPicker.svelte`). The page shows each change as you make it; nothing is saved until
+**Save settings**.
+
+**Default theme** is what everyone sees until they switch theme themselves (the sun / moon button). Picking it here
+shows it straight away; **Use it for me too** drops your own choice so the team default applies to you as well.

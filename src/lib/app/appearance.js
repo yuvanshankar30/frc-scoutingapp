@@ -57,6 +57,12 @@ export const PALETTES = Object.freeze([
   }
 ]);
 
+/** Quick picks for the custom page backgrounds: every palette's own background, for each theme. */
+export const BACKGROUND_PRESETS = Object.freeze({
+  dark: PALETTES.map((palette) => palette.dark[0]),
+  light: [...PALETTES.map((palette) => palette.light[0]), '#ffffff']
+});
+
 export const FONTS = Object.freeze([
   {
     key: 'grotesk',
@@ -97,7 +103,7 @@ export const CORNERS = Object.freeze([
 ]);
 
 export const MARK_SHAPES = Object.freeze([
-  { key: 'rounded', label: 'Rounded square' },
+  { key: 'rounded', label: 'Rounded' },
   { key: 'circle', label: 'Circle' },
   { key: 'square', label: 'Square' }
 ]);
@@ -118,7 +124,10 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   markText: '',
   tagline: '',
   serifAccent: true,
-  glow: true
+  glow: true,
+  tertiaryColor: '',
+  backgroundDark: '',
+  backgroundLight: ''
 });
 
 const keyIn = (list, value, fallback) => (list.some((item) => item.key === value) ? value : fallback);
@@ -137,7 +146,10 @@ export function normalizeAppearance(raw) {
     markText: text(value.markText ?? value.mark_text, 4),
     tagline: text(value.tagline, 80),
     serifAccent: (value.serifAccent ?? value.serif_accent ?? d.serifAccent) ? true : false,
-    glow: (value.glow ?? d.glow) ? true : false
+    glow: (value.glow ?? d.glow) ? true : false,
+    tertiaryColor: hexOrEmpty(value.tertiaryColor ?? value.tertiary_color),
+    backgroundDark: hexOrEmpty(value.backgroundDark ?? value.background_dark),
+    backgroundLight: hexOrEmpty(value.backgroundLight ?? value.background_light)
   };
 }
 
@@ -154,8 +166,43 @@ export function appearanceColumn(raw) {
     mark_text: a.markText,
     tagline: a.tagline,
     serif_accent: a.serifAccent,
-    glow: a.glow
+    glow: a.glow,
+    tertiary_color: a.tertiaryColor,
+    background_dark: a.backgroundDark,
+    background_light: a.backgroundLight
   };
+}
+
+const channels = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const toHex = (values) =>
+  `#${values.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
+/** `hex` moved `amount` (0-1) of the way to `target`. */
+export const mixHex = (hex, target, amount) => {
+  const [a, b] = [channels(hex), channels(target)];
+  return toHex(a.map((value, i) => value + (b[i] - value) * amount));
+};
+const lightness = (hex) => {
+  const [r, g, b] = channels(hex);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+};
+
+/**
+ * Surfaces built from a custom page background: cards, raised surfaces and borders a step away from it, and text that
+ * reads on it. Returns the same eight colors a palette lists: [bg, s1, s2, s3, border, body, strong, muted].
+ */
+export function surfacesFrom(background) {
+  const dark = lightness(background) < 0.5;
+  const toward = dark ? '#ffffff' : '#000000';
+  return [
+    background,
+    mixHex(background, toward, dark ? 0.05 : 0.025),
+    mixHex(background, toward, dark ? 0.09 : 0.05),
+    mixHex(background, toward, dark ? 0.13 : 0.08),
+    mixHex(background, toward, dark ? 0.18 : 0.14),
+    mixHex(background, toward, dark ? 0.82 : 0.82),
+    dark ? '#f6f4f0' : '#0d0b09',
+    mixHex(background, toward, dark ? 0.5 : 0.55)
+  ];
 }
 
 /**
@@ -165,7 +212,12 @@ export function appearanceColumn(raw) {
 export function appearanceCssVars(raw, theme, accent = '') {
   const a = normalizeAppearance(raw);
   const palette = PALETTES.find((item) => item.key === a.palette);
-  const [bg, s1, s2, s3, border, body, strong, muted] = theme === 'modern' ? palette.light : palette.dark;
+  const custom = theme === 'modern' ? a.backgroundLight : a.backgroundDark;
+  const [bg, s1, s2, s3, border, body, strong, muted] = custom
+    ? surfacesFrom(custom)
+    : theme === 'modern'
+      ? palette.light
+      : palette.dark;
   const font = FONTS.find((item) => item.key === a.font);
   const corners = CORNERS.find((item) => item.key === a.corners);
   const second = a.secondaryColor || accent || 'currentColor';
@@ -201,6 +253,8 @@ export function appearanceCssVars(raw, theme, accent = '') {
     '--radius-xl': `${corners.radius[4]}px`,
     '--btn-radius-default': corners.button,
     '--accent-2': second,
+    '--accent-3': a.tertiaryColor || second,
+    '--chart-secondary': a.tertiaryColor || a.secondaryColor || muted,
     '--app-glow': a.glow
       ? `radial-gradient(1100px 620px at 88% -8%, color-mix(in srgb, ${glowColor} 9%, transparent), transparent 70%)`
       : 'none'

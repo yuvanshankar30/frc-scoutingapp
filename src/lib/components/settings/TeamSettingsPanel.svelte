@@ -163,7 +163,7 @@
   .team-settings {
     display: grid;
     gap: var(--space-4);
-    max-width: 44rem;
+    max-width: 96rem;
   }
   .ts-form {
     display: grid;
