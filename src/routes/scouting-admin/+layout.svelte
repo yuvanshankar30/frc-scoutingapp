@@ -956,47 +956,127 @@
     {/if}
 
     {#if section === 'event'}
-      <div class="sp-grid">
-        <section class="sp-panel">
-          <header>
-            <h3>Active event</h3>
-            <p>The competition every scouting page works from.</p>
-          </header>
-          <div class="sp-row">
-            <Select
-              id="eventSelect"
-              class="sp-input"
-              wrap="sel-event"
-              bind:value={selectedEventKey}
-              aria-label="Competition code"
-            >
-              {#if eventKey && !upcomingEvents.find((e) => e.key === eventKey)}
-                <option value={eventKey}>{eventKey} (current)</option>
-              {/if}
-              {#each upcomingEvents as ev}
-                <option value={ev.key}>{ev.key} - {ev.name}{ev.start_date ? ` (${ev.start_date})` : ''}</option>
-              {/each}
-              {#each pastEventsWithData as ev}
-                <option value={ev.value}>{ev.value}{ev.label && ev.label !== ev.value ? ` - ${ev.label}` : ''}</option>
-              {/each}
-            </Select>
-            <button
-              class="btn btn-primary"
-              disabled={!selectedEventKey || savingEvent || selectedEventKey === eventKey}
-              on:click={() => saveEventKey()}>{savingEvent ? 'Saving...' : 'Set event'}</button
+      <div class="ev">
+        <section class="ev-summary" aria-label="Current event">
+          <div>
+            <span class="ev-k">Now scouting</span>
+            <b class="ev-code">{displayEventCode(eventKey) || 'No event set'}</b>
+          </div>
+          <div>
+            <span class="ev-k">Schedule and teams from</span>
+            <b
+              >{activeLink.tba_name ||
+                activeLink.tba_event_key ||
+                (eventKey ? `${displayEventCode(eventKey)} on TBA` : '—')}</b
             >
           </div>
-          <p class="sp-meta">Now scouting <b>{displayEventCode(eventKey) || 'nothing yet'}</b></p>
-          {#if eventKey}
-            <div class="sp-link">
-              <h4>Tracks TBA event <span class="sp-optional">optional</span></h4>
-              <p>
-                Use another event's schedule, teams, rankings and OPRs from The Blue Alliance for {displayEventCode(
-                  eventKey
-                )}, for example a practice code that follows the real event. Leave empty to use {displayEventCode(
-                  eventKey
-                )} itself.
-              </p>
+          <div>
+            <span class="ev-k">Prescouting teams</span>
+            <b>{manualTeams.length}</b>
+          </div>
+          <div>
+            <span class="ev-k">Starting photos</span>
+            <b>{Object.values(startPhotos).filter(Boolean).length} of {startingPositions.length * 2}</b>
+          </div>
+        </section>
+
+        <section class="ev-step">
+          <header class="ev-head">
+            <span class="ev-num">1</span>
+            <div>
+              <h3>Choose the event</h3>
+              <p>The competition every scouting page works from.</p>
+            </div>
+          </header>
+          <div class="ev-body">
+            <label class="ev-field" for="eventSelect">Event</label>
+            <div class="sp-row">
+              <Select
+                id="eventSelect"
+                class="sp-input"
+                wrap="sel-event"
+                bind:value={selectedEventKey}
+                aria-label="Competition code"
+              >
+                {#if eventKey && !upcomingEvents.find((e) => e.key === eventKey)}
+                  <option value={eventKey}>{eventKey} (current)</option>
+                {/if}
+                {#each upcomingEvents as ev}
+                  <option value={ev.key}>{ev.key} - {ev.name}{ev.start_date ? ` (${ev.start_date})` : ''}</option>
+                {/each}
+                {#each pastEventsWithData as ev}
+                  <option value={ev.value}>{ev.value}{ev.label && ev.label !== ev.value ? ` - ${ev.label}` : ''}</option
+                  >
+                {/each}
+              </Select>
+              <button
+                class="btn btn-primary"
+                disabled={!selectedEventKey || savingEvent || selectedEventKey === eventKey}
+                on:click={() => saveEventKey()}>{savingEvent ? 'Saving...' : 'Set event'}</button
+              >
+            </div>
+
+            <details class="ev-more">
+              <summary>Event not in the list? Create a competition code</summary>
+              <div class="ev-more-body">
+                <p>
+                  For an off-season or practice event: the year followed by the event code, like 2026mttd. It can follow
+                  an event on The Blue Alliance, or stand on its own.
+                </p>
+                <label class="ev-field" for="newEventCode">Competition code</label>
+                <input
+                  id="newEventCode"
+                  class="sp-input sp-code-input"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  maxlength="32"
+                  placeholder="2026MTTD"
+                  bind:value={newEventCode}
+                  on:keydown={(e) => {
+                    if (e.key === 'Enter' && normalizeEventCode(newEventCode) && !savingEvent)
+                      saveEventKey(newEventCode, { create: true });
+                  }}
+                />
+                <label class="ev-field" for="new-tba-event"
+                  >Follows TBA event <span class="sp-optional">optional</span></label
+                >
+                <TbaEventPicker
+                  id="new-tba-event"
+                  code={normalizeEventCode(newEventCode) || ''}
+                  bind:value={newEventTba}
+                  bind:label={newEventTbaLabel}
+                  disabled={savingEvent}
+                />
+                <div>
+                  <button
+                    class="btn btn-primary"
+                    disabled={!normalizeEventCode(newEventCode) || savingEvent}
+                    on:click={() => saveEventKey(newEventCode, { create: true })}
+                    >{savingEvent ? 'Saving...' : 'Create and set'}</button
+                  >
+                </div>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        {#if eventKey}
+          <section class="ev-step">
+            <header class="ev-head">
+              <span class="ev-num">2</span>
+              <div>
+                <h3>Follow a TBA event <span class="sp-optional">optional</span></h3>
+                <p>
+                  Take {displayEventCode(eventKey)}'s schedule, teams, rankings and OPRs from another event on The Blue
+                  Alliance, for example when a practice code follows the real event. Leave empty to use
+                  {displayEventCode(eventKey)} itself.
+                </p>
+              </div>
+            </header>
+            <div class="ev-body">
+              <label class="ev-field" for="active-tba-event">TBA event</label>
               <TbaEventPicker
                 id="active-tba-event"
                 code={eventKey}
@@ -1006,136 +1086,101 @@
                 on:change={changeActiveLink}
               />
             </div>
-          {/if}
-          <div class="sp-create">
-            <h4>Create a competition code</h4>
-            <p>
-              For an event that is not in the list, such as an off-season or practice event. Use the year followed by
-              the event code, like 2026mttd.
-            </p>
+          </section>
+        {/if}
+
+        <section class="ev-step">
+          <header class="ev-head">
+            <span class="ev-num">{eventKey ? 3 : 2}</span>
+            <div>
+              <h3>Prescouting teams <span class="sp-count">{manualTeams.length}</span></h3>
+              <p>
+                Teams added by hand before the event has a roster on The Blue Alliance. They can stay once the real
+                roster is out.
+              </p>
+            </div>
+          </header>
+          <div class="ev-body">
+            <label class="ev-field" for="manual-team">Team number</label>
             <div class="sp-row">
               <input
-                id="newEventCode"
-                class="sp-input sp-code-input"
+                id="manual-team"
+                class="sp-input"
                 type="text"
-                autocomplete="off"
-                autocapitalize="characters"
-                spellcheck="false"
-                maxlength="32"
-                placeholder="2026MTTD"
-                aria-label="New competition code"
-                bind:value={newEventCode}
+                inputmode="numeric"
+                placeholder="e.g. 5199"
+                bind:value={manualTeamInput}
                 on:keydown={(e) => {
-                  if (e.key === 'Enter' && normalizeEventCode(newEventCode) && !savingEvent)
-                    saveEventKey(newEventCode, { create: true });
+                  if (e.key === 'Enter') addManualTeam();
                 }}
               />
               <button
                 class="btn btn-primary"
-                disabled={!normalizeEventCode(newEventCode) || savingEvent}
-                on:click={() => saveEventKey(newEventCode, { create: true })}
-                >{savingEvent ? 'Saving...' : 'Create and set'}</button
+                disabled={!manualTeamInput.trim() || savingManualTeam}
+                on:click={addManualTeam}>{savingManualTeam ? 'Adding...' : 'Add team'}</button
               >
             </div>
-            <div class="sp-link">
-              <h4>Track a TBA event <span class="sp-optional">optional</span></h4>
-              <p>
-                Search by name and the code will follow that event on The Blue Alliance. Skip it for an event TBA does
-                not list.
-              </p>
-              <TbaEventPicker
-                id="new-tba-event"
-                code={normalizeEventCode(newEventCode) || ''}
-                bind:value={newEventTba}
-                bind:label={newEventTbaLabel}
-                disabled={savingEvent}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class="sp-panel">
-          <header>
-            <h3>Prescouting teams</h3>
-            <span class="sp-count">{manualTeams.length}</span>
-          </header>
-          <p>
-            Teams added by hand before an event has a roster on The Blue Alliance. They are harmless to leave once the
-            real roster is available.
-          </p>
-          <div class="sp-row">
-            <input
-              class="sp-input"
-              type="text"
-              inputmode="numeric"
-              placeholder="Team number, e.g. 5199"
-              bind:value={manualTeamInput}
-              on:keydown={(e) => {
-                if (e.key === 'Enter') addManualTeam();
-              }}
-              aria-label="Team number"
-            />
-            <button
-              class="btn btn-primary"
-              disabled={!manualTeamInput.trim() || savingManualTeam}
-              on:click={addManualTeam}>{savingManualTeam ? 'Adding...' : 'Add'}</button
-            >
-          </div>
-          {#if manualTeams.length}
-            <ul class="sp-chips">
-              {#each manualTeams as teamKey}
-                <li>
-                  {teamKey.replace(/^frc/i, '')}<button
-                    type="button"
-                    disabled={removingManualTeam === teamKey}
-                    on:click={() => removeManualTeam(teamKey)}
-                    aria-label={`Remove team ${teamKey.replace(/^frc/i, '')}`}>&times;</button
-                  >
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </section>
-
-        <section class="sp-panel sp-wide">
-          <header>
-            <h3>Starting position photos</h3>
-            <p>
-              Photos scouts see when choosing where a robot starts. JPEG, PNG or WebP, up to 5 MiB. Without one they see
-              a schematic.
-            </p>
-          </header>
-          {#each ['red', 'blue'] as photoAlliance}
-            <div class="sp-alliance">
-              <h4 class={photoAlliance}>{photoAlliance} alliance</h4>
-              <div class="sp-tiles">
-                {#each startingPositions as position}
-                  <label class="sp-tile" class:has-photo={startPhotos[`${photoAlliance}:${position}`]}>
-                    {#if startPhotos[`${photoAlliance}:${position}`]}
-                      <img
-                        src={startPhotos[`${photoAlliance}:${position}`]}
-                        alt={`${photoAlliance} ${position} starting position`}
-                      />
-                    {:else}
-                      <span class="sp-empty">No photo</span>
-                    {/if}
-                    <span class="sp-cap"
-                      ><b>{position}</b><small
-                        >{startPhotos[`${photoAlliance}:${position}`] ? 'Replace' : 'Upload'}</small
-                      ></span
+            {#if manualTeams.length}
+              <ul class="sp-chips">
+                {#each manualTeams as teamKey}
+                  <li>
+                    {teamKey.replace(/^frc/i, '')}<button
+                      type="button"
+                      disabled={removingManualTeam === teamKey}
+                      on:click={() => removeManualTeam(teamKey)}
+                      aria-label={`Remove team ${teamKey.replace(/^frc/i, '')}`}>&times;</button
                     >
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      disabled={photoSaving}
-                      on:change={(event) => uploadStartPhoto(event, photoAlliance, position)}
-                    />
-                  </label>
+                  </li>
                 {/each}
-              </div>
+              </ul>
+            {/if}
+          </div>
+        </section>
+
+        <section class="ev-step">
+          <header class="ev-head">
+            <span class="ev-num">{eventKey ? 4 : 3}</span>
+            <div>
+              <h3>Starting position photos <span class="sp-optional">optional</span></h3>
+              <p>
+                What scouts see when choosing where a robot starts. JPEG, PNG or WebP, up to 5 MiB. Without a photo they
+                see a schematic.
+              </p>
             </div>
-          {/each}
-          {#if photoStatus}<p class="sp-meta" role="status">{photoStatus}</p>{/if}
+          </header>
+          <div class="ev-body">
+            {#each ['red', 'blue'] as photoAlliance}
+              <div class="sp-alliance">
+                <h4 class={photoAlliance}>{photoAlliance} alliance</h4>
+                <div class="sp-tiles">
+                  {#each startingPositions as position}
+                    <label class="sp-tile" class:has-photo={startPhotos[`${photoAlliance}:${position}`]}>
+                      {#if startPhotos[`${photoAlliance}:${position}`]}
+                        <img
+                          src={startPhotos[`${photoAlliance}:${position}`]}
+                          alt={`${photoAlliance} ${position} starting position`}
+                        />
+                      {:else}
+                        <span class="sp-empty">No photo</span>
+                      {/if}
+                      <span class="sp-cap"
+                        ><b>{position}</b><small
+                          >{startPhotos[`${photoAlliance}:${position}`] ? 'Replace' : 'Upload'}</small
+                        ></span
+                      >
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={photoSaving}
+                        on:change={(event) => uploadStartPhoto(event, photoAlliance, position)}
+                      />
+                    </label>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+            {#if photoStatus}<p class="sp-meta" role="status">{photoStatus}</p>{/if}
+          </div>
         </section>
       </div>
     {:else if section === 'assignments'}
@@ -1503,6 +1548,126 @@
 {/if}
 
 <style>
+  /* Event setup: one column of numbered steps under a summary of the current event. */
+  .ev {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 56rem;
+  }
+  .ev-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    overflow: hidden;
+  }
+  .ev-summary > div {
+    display: grid;
+    gap: 4px;
+    padding: var(--space-3) var(--space-4);
+    border-left: 1px solid var(--border);
+  }
+  .ev-summary > div:first-child {
+    border-left: 0;
+  }
+  .ev-k {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .ev-summary b {
+    color: var(--text-strong, var(--text));
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .ev-code {
+    font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .ev-step {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+  }
+  .ev-head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+  }
+  .ev-num {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--text-strong, var(--text));
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .ev-head h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0.15rem 0 0;
+    font-size: 1.05rem;
+    font-weight: 500;
+  }
+  .ev-head p {
+    margin: var(--space-1) 0 0;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  .ev-body {
+    display: grid;
+    gap: var(--space-2);
+    padding-left: calc(1.75rem + var(--space-3));
+  }
+  .ev-field {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+  .ev-more {
+    margin-top: var(--space-2);
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-3);
+  }
+  .ev-more summary {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+  .ev-more summary:hover {
+    color: var(--text);
+  }
+  .ev-more-body {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .ev-more-body p {
+    margin: 0 0 var(--space-1);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  @media (max-width: 700px) {
+    .ev-body {
+      padding-left: 0;
+    }
+    .ev-summary > div:nth-child(odd) {
+      border-left: 0;
+    }
+  }
   .ov-tiles {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
@@ -1548,24 +1713,6 @@
   .ov-tile small {
     color: var(--text-muted);
     font-size: 0.8rem;
-  }
-  .sp-link {
-    display: grid;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
-  }
-  .sp-link h4 {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-2);
-    margin: 0;
-  }
-  .sp-link p {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.82rem;
   }
   .sp-optional {
     padding: 0.05rem 0.45rem;
@@ -2213,12 +2360,6 @@
     }
   }
 
-  .sp-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-    align-items: start;
-  }
   .sp-panel {
     display: grid;
     gap: var(--space-2);
@@ -2229,13 +2370,6 @@
   }
   .sp-panel.sp-wide {
     grid-column: 1 / -1;
-  }
-  .sp-panel header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0 var(--space-3);
   }
   .sp-panel h3 {
     margin: 0;
@@ -2287,22 +2421,8 @@
     color: var(--text-muted) !important;
     font-size: 0.85rem !important;
   }
-  .sp-meta b {
-    color: var(--text);
-    font-weight: 600;
-  }
   .sp-row :global(.sel-event) {
     flex: 1;
-  }
-  .sp-create {
-    display: grid;
-    gap: var(--space-2);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
-  }
-  .sp-create h4 {
-    margin: 0;
-    font-size: 0.95rem;
   }
   .sp-code-input {
     text-transform: uppercase;
@@ -2394,19 +2514,21 @@
     font-size: 0.82rem;
   }
   .sp-cap {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: var(--space-2);
+    display: grid;
+    gap: 1px;
     padding: var(--space-2) var(--space-3);
   }
   .sp-cap b {
     font-weight: 500;
     text-transform: capitalize;
-    font-size: 0.88rem;
+    font-size: 0.85rem;
   }
   .sp-cap small {
-    color: var(--accent-strong);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .sp-tile:hover .sp-cap small {
+    color: var(--text);
   }
   .sp-tile input {
     position: absolute;
