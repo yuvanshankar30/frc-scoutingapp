@@ -383,52 +383,70 @@
         </div>
 
         <div class="compare" aria-label="Alliance comparison">
-          <div class="side red-t">
-            <span>Red</span>{#if scoreRed !== null}<b>{scoreRed}</b>{/if}{#if rpRed !== null}<small>{rpRed} RP</small
-              >{/if}{#if figures.bonuses.red.length}<small class="bonus">{figures.bonuses.red.join(' · ')}</small>{/if}
+          <div class="score-row">
+            {#each [['red', 'Red', scoreRed, rpRed], ['blue', 'Blue', scoreBlue, rpBlue]] as [side, name, score, rp], i (side)}
+              {#if i === 1}
+                <div class="verdict">
+                  {#if isPlayed(selected)}
+                    <b>{winner === 'tie' ? 'Tie' : `${winner === 'red' ? 'Red' : 'Blue'} won`}</b>
+                    {#if scoreRed !== null && scoreBlue !== null}<small
+                        >by {Math.abs(scoreRed - scoreBlue)} point{Math.abs(scoreRed - scoreBlue) === 1
+                          ? ''
+                          : 's'}</small
+                      >{/if}
+                  {:else}
+                    <b>vs</b><small>Not played yet</small>
+                  {/if}
+                </div>
+              {/if}
+              <div class="side {side}" class:won={winner === side}>
+                <span class="side-name">{name}</span>
+                <b class="side-score">{score ?? '—'}</b>
+                <div class="side-meta">
+                  {#if rp !== null}<span class="pill">{rp} RP</span>{/if}
+                  {#each figures.bonuses[side] as bonus (bonus)}<span class="pill bonus">{bonus}</span>{/each}
+                </div>
+              </div>
+            {/each}
           </div>
-          <div class="bars">
-            <p class="group">Expected from scouting</p>
-            <div class="metric">
-              <span class="v">{red.balls}</span>
-              <div class="bar" role="img" aria-label={`Expected balls: red ${red.balls}, blue ${blue.balls}`}>
-                <i class="r" style={`width:${split(red.balls, blue.balls)}%`}></i><i
-                  class="b"
-                  style={`width:${100 - split(red.balls, blue.balls)}%`}
-                ></i>
-              </div>
-              <span class="v">{blue.balls}</span>
-              <small>Expected balls</small>
-            </div>
-            <div class="metric">
-              <span class="v">{red.auto}</span>
-              <div class="bar" role="img" aria-label={`Expected auto points: red ${red.auto}, blue ${blue.auto}`}>
-                <i class="r" style={`width:${split(red.auto, blue.auto)}%`}></i><i
-                  class="b"
-                  style={`width:${100 - split(red.auto, blue.auto)}%`}
-                ></i>
-              </div>
-              <span class="v">{blue.auto}</span>
-              <small>Expected auto points</small>
-            </div>
-            {#if figures.rows.length}
-              <p class="group official">Official result</p>
-              <div class="figs">
-                {#each figures.rows as row (row.label)}
-                  <div class="fig">
-                    <span class="r" class:lead={row.red > row.blue}>{row.red}</span>
-                    <span class="l">{row.label}</span>
-                    <span class="b" class:lead={row.blue > row.red}>{row.blue}</span>
+
+          <div class="compare-body">
+            <section class="cmp-block">
+              <p class="group">Expected from scouting</p>
+              {#if !red.known && !blue.known}
+                <p class="cmp-empty">No robot in this match has a scouting report yet.</p>
+              {:else}
+                {#each [['Balls', red.balls, blue.balls], ['Auto points', red.auto, blue.auto]] as [label, r, b] (label)}
+                  <div class="metric">
+                    <span class="v r" class:lead={r > b}>{r}</span>
+                    <div class="metric-mid">
+                      <small>{label}</small>
+                      <div class="bar" role="img" aria-label={`Expected ${label.toLowerCase()}: red ${r}, blue ${b}`}>
+                        <i class="r" style={`width:${split(r, b)}%`}></i><i
+                          class="b"
+                          style={`width:${100 - split(r, b)}%`}
+                        ></i>
+                      </div>
+                    </div>
+                    <span class="v b" class:lead={b > r}>{b}</span>
                   </div>
                 {/each}
-              </div>
+              {/if}
+            </section>
+            {#if figures.rows.length}
+              <section class="cmp-block">
+                <p class="group">Official result</p>
+                <div class="figs">
+                  {#each figures.rows as row (row.label)}
+                    <div class="fig">
+                      <span class="r" class:lead={row.red > row.blue}>{row.red}</span>
+                      <span class="l">{row.label}</span>
+                      <span class="b" class:lead={row.blue > row.red}>{row.blue}</span>
+                    </div>
+                  {/each}
+                </div>
+              </section>
             {/if}
-          </div>
-          <div class="side blue-t">
-            <span>Blue</span>{#if scoreBlue !== null}<b>{scoreBlue}</b>{/if}{#if rpBlue !== null}<small
-                >{rpBlue} RP</small
-              >{/if}{#if figures.bonuses.blue.length}<small class="bonus">{figures.bonuses.blue.join(' · ')}</small
-              >{/if}
           </div>
         </div>
         {#if red.known < red.size || blue.known < blue.size}
@@ -618,68 +636,142 @@
 
   .compare {
     display: grid;
-    grid-template-columns: 5.5rem minmax(0, 1fr) 5.5rem;
     gap: var(--space-4);
-    align-items: center;
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
+  /* The scoreboard: each alliance's score with its RP and bonuses, and the result between them. */
+  .score-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: center;
+  }
   .side {
     display: grid;
-    gap: 2px;
-    justify-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--side-color);
+    background: color-mix(in srgb, var(--side-color) 6%, var(--surface-1));
   }
-  .side span {
+  .side.red {
+    --side-color: var(--alliance-red-text);
+    justify-items: start;
+  }
+  .side.blue {
+    --side-color: var(--alliance-blue-text);
+    justify-items: end;
+    text-align: right;
+  }
+  .side.won {
+    background: color-mix(in srgb, var(--side-color) 12%, var(--surface-1));
+  }
+  .side-name {
     font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    font-weight: 500;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--side-color);
   }
-  .side b {
-    font-size: 1.6rem;
+  .side-score {
+    font-family: var(--font-display);
+    font-size: 2.4rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
+    color: var(--text-strong, var(--text));
   }
-  .side small {
-    color: var(--text-muted);
+  .side-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .side.blue .side-meta {
+    justify-content: flex-end;
+  }
+  .pill {
+    padding: 0.1rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
     font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
   }
-  .red-t b {
-    color: var(--alliance-red-text);
+  .pill.bonus {
+    border-color: color-mix(in srgb, var(--side-color) 45%, transparent);
+    color: var(--text);
   }
-  .blue-t b {
-    color: var(--alliance-blue-text);
-  }
-  .bars {
+  .verdict {
     display: grid;
-    gap: var(--space-3);
+    justify-items: center;
+    gap: 2px;
+    min-width: 7rem;
+    text-align: center;
+  }
+  .verdict b {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-strong, var(--text));
+  }
+  .verdict small {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+  .compare-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    gap: var(--space-3) var(--space-5);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+  .cmp-empty {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+  }
+  .cmp-block {
+    display: grid;
+    align-content: start;
+    gap: var(--space-2);
   }
   .metric {
     display: grid;
     grid-template-columns: 3rem minmax(0, 1fr) 3rem;
     gap: var(--space-3);
-    align-items: center;
+    align-items: end;
   }
-  .metric small {
-    grid-column: 1 / -1;
+  .metric-mid {
+    display: grid;
+    gap: 4px;
+  }
+  .metric-mid small {
     text-align: center;
     color: var(--text-muted);
-    font-size: 0.72rem;
-    margin-top: -4px;
+    font-size: 0.75rem;
   }
   .metric .v {
-    font-size: 1rem;
-    font-weight: 650;
+    font-size: 1.05rem;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    line-height: 1.2;
   }
-  .metric .v:last-of-type {
+  .metric .v.b {
     text-align: right;
+  }
+  .metric .v.lead {
+    color: var(--text-strong, var(--text));
+    font-weight: 650;
   }
   .bar {
     display: flex;
-    height: 0.55rem;
-    border-radius: 3px;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
     overflow: hidden;
     background: var(--surface-3);
     gap: 2px;
@@ -694,36 +786,23 @@
   .bar .b {
     background: var(--alliance-blue);
   }
-  .caveat {
-    margin: calc(var(--space-2) * -1) 0 0;
-    color: var(--text-muted);
-    font-size: 0.78rem;
-  }
-
   .group {
     margin: 0;
     color: var(--text-muted);
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    text-align: center;
-  }
-  .group.official {
-    margin-top: var(--space-2);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
   }
   .figs {
     display: grid;
-    gap: 1px;
-    width: min(30rem, 100%);
-    margin: 0 auto;
   }
   .fig {
     display: grid;
-    grid-template-columns: 4.5rem minmax(0, 1fr) 4.5rem;
-    padding: 0.3rem 0;
-    border-bottom: 1px solid var(--border);
+    grid-template-columns: 4rem minmax(0, 1fr) 4rem;
+    align-items: center;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
     font-size: 0.92rem;
     font-variant-numeric: tabular-nums;
   }
@@ -743,13 +822,8 @@
     text-align: right;
   }
   .fig .lead {
-    color: var(--text);
-    font-weight: 700;
-  }
-  .side .bonus {
-    max-width: 6rem;
-    text-align: center;
-    line-height: 1.3;
+    color: var(--text-strong, var(--text));
+    font-weight: 650;
   }
   .alliances {
     display: grid;
@@ -783,13 +857,8 @@
       position: static;
       max-height: 16rem;
     }
-    .compare {
-      grid-template-columns: 1fr;
-    }
-    .side {
-      grid-auto-flow: column;
-      justify-content: center;
-      gap: var(--space-3);
+    .side-score {
+      font-size: 2rem;
     }
   }
 

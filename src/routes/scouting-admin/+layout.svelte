@@ -49,6 +49,7 @@
     Pencil,
     UserCog,
     UserPlus,
+    RefreshCw,
     Wrench
   } from 'lucide-svelte';
 
@@ -891,23 +892,6 @@
   </div>
 {:else}
   <div class="scouting-admin-page">
-    <div class="page-header scouting-header">
-      <div class="header-content scouting-header-content">
-        <div>
-          <h1>Scouting Admin</h1>
-          <p class="sub-label">
-            Current event:
-            <span class="mono">{displayEventCode(eventKey) || 'Not set'}</span>
-          </p>
-        </div>
-      </div>
-      <div class="page-actions">
-        <button class="btn btn-secondary" disabled={loading} on:click={loadDashboard}
-          >{loading ? 'Refreshing...' : 'Refresh'}</button
-        >
-      </div>
-    </div>
-
     {#if $isPhone}
       <button type="button" class="adm-picker" aria-haspopup="dialog" on:click={() => (sectionSheetOpen = true)}>
         <svelte:component this={ADMIN_ICONS[currentTab.icon]} size={20} />
@@ -934,22 +918,35 @@
         </nav>
       </BottomSheet>
     {:else}
-      <nav class="admin-tabs" aria-label="Scouting Admin pages">
-        {#each SCOUTING_ADMIN_PAGES as tab (tab.key)}
-          <a
-            class="admin-tab"
-            class:active={tab.href === '/scouting-admin'
-              ? section === 'overview'
-              : $page.url.pathname.startsWith(tab.href)}
-            href={tab.href}
-            aria-current={(
-              tab.href === '/scouting-admin' ? section === 'overview' : $page.url.pathname.startsWith(tab.href)
-            )
-              ? 'page'
-              : undefined}>{tab.label}</a
+      <div class="admin-bar">
+        <nav class="admin-tabs" aria-label="Scouting Admin pages">
+          {#each SCOUTING_ADMIN_PAGES as tab (tab.key)}
+            <a
+              class="admin-tab"
+              class:active={tab.href === '/scouting-admin'
+                ? section === 'overview'
+                : $page.url.pathname.startsWith(tab.href)}
+              href={tab.href}
+              aria-current={(
+                tab.href === '/scouting-admin' ? section === 'overview' : $page.url.pathname.startsWith(tab.href)
+              )
+                ? 'page'
+                : undefined}>{tab.label}</a
+            >
+          {/each}
+        </nav>
+        <div class="admin-bar-end">
+          <span class="admin-event" title="Active competition code">{displayEventCode(eventKey) || 'No event'}</span>
+          <button
+            class="admin-refresh"
+            type="button"
+            disabled={loading}
+            on:click={loadDashboard}
+            aria-label="Refresh"
+            title="Refresh"><RefreshCw size={15} class={loading ? 'spin' : ''} /></button
           >
-        {/each}
-      </nav>
+        </div>
+      </div>
     {/if}
 
     {#if warning || errorMsg || successMsg}
@@ -1708,23 +1705,6 @@
     min-width: 260px;
   }
 
-  /* The Season control is a label-over-select stack; Refresh Dashboard is a
-     single-line button with no label. Left at the container's default
-     stretch, the button grows to match the stack's full height and its text
-     centers awkwardly instead of sitting level with the select. Align both
-     to their bottom edge so the button lines up with the select itself. */
-  .scouting-header .page-actions {
-    align-items: flex-end;
-  }
-
-  /* SeasonFilter wraps its select in a .form-group, which carries a
-     16px bottom margin meant for stacked form layouts. In this header that
-     margin is part of the flex item's box, so bottom-aligning left the
-     select's visible edge sitting 16px above the buttons beside it. */
-  .scouting-header .page-actions :global(.form-group) {
-    margin-bottom: 0;
-  }
-
   .match-scouting-export {
     display: flex;
     align-items: center;
@@ -1961,33 +1941,78 @@
   .data-browser {
     margin: var(--space-5) 0;
   }
+  /* The section switcher: pill tabs on a hairline, with the event and a refresh button at the end. */
+  .admin-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
   .admin-tabs {
     display: flex;
-    gap: var(--space-1);
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
     flex-wrap: wrap;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: var(--space-4);
   }
   .admin-tab {
-    padding: var(--space-3) var(--space-4);
+    padding: 0.45rem 0.9rem;
+    border-radius: var(--radius-full);
     color: var(--text-secondary);
     text-decoration: none;
+    font-size: 0.92rem;
     font-weight: 500;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     transition:
       color 0.15s ease,
-      background 0.15s ease;
+      background-color 0.15s ease;
   }
   .admin-tab:hover {
-    color: var(--text);
-    background: var(--surface-2);
+    color: var(--text-strong, var(--text));
+    background: color-mix(in srgb, var(--text) 6%, transparent);
   }
   .admin-tab.active {
-    color: var(--accent-strong);
-    border-bottom-color: var(--accent);
-    background: var(--accent-subtle);
+    color: var(--text-strong, var(--text));
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .admin-bar-end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: none;
+  }
+  .admin-event {
+    padding: 0.2rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .admin-refresh {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .admin-refresh:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .admin-refresh :global(.spin) {
+    animation: admin-spin 0.9s linear infinite;
+  }
+  @keyframes admin-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   @media (max-width: 700px) {
     .admin-tabs {
@@ -2585,9 +2610,6 @@
     color: var(--text-secondary);
   }
   @media (max-width: 900px) {
-    .scouting-header p {
-      display: none;
-    }
     .sp-grid {
       grid-template-columns: 1fr;
     }
@@ -2599,7 +2621,6 @@
     .sp-row > :global(:not(.sr-only)) {
       width: 100%;
     }
-    .page-actions .btn,
     .sp-panel .btn {
       min-height: var(--tap-min);
     }

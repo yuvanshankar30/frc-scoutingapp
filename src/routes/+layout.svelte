@@ -3,6 +3,8 @@
   import '../competition.css';
   import '../calm.css';
   import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import { afterNavigate, goto } from '$app/navigation';
@@ -124,6 +126,8 @@
   const RAIL_STORAGE_KEY = 'scouting-rail-collapsed';
   let collapsed = false;
   let menuOpen = false;
+  // Folding animations are skipped for people who ask for reduced motion.
+  const motionMs = (ms) => (browser && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms);
   let searchOpen = false;
   // Menu groups someone folded away (kept on this device). Every group starts open.
   const CLOSED_GROUPS_KEY = 'scouting-closed-groups';
@@ -334,18 +338,22 @@
             <button type="button" class="rail-label" aria-expanded={!folded} on:click={() => toggleGroup(group.key)}
               ><span>{group.label}</span><ChevronDown size={13} /></button
             >
-            {#each folded ? [] : group.items as item (item.key)}
-              <a
-                class="rail-link"
-                class:active={current?.key === item.key}
-                href={item.href}
-                title={collapsed ? item.label : item.blurb}
-                aria-label={item.label}
-              >
-                <svelte:component this={ICONS[item.icon]} size={18} />
-                <span>{item.label}</span>
-              </a>
-            {/each}
+            {#if !folded}
+              <div class="rail-items" transition:slide={{ duration: motionMs(200), easing: cubicOut }}>
+                {#each group.items as item (item.key)}
+                  <a
+                    class="rail-link"
+                    class:active={current?.key === item.key}
+                    href={item.href}
+                    title={collapsed ? item.label : item.blurb}
+                    aria-label={item.label}
+                  >
+                    <svelte:component this={ICONS[item.icon]} size={18} />
+                    <span>{item.label}</span>
+                  </a>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/each}
       </nav>
@@ -621,7 +629,8 @@
     gap: calc(var(--rp) * 1.5);
     flex: 1;
   }
-  .rail-group {
+  .rail-group,
+  .rail-items {
     display: grid;
     gap: 2px;
   }
