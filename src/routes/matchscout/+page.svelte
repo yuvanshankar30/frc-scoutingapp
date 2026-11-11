@@ -3,11 +3,14 @@
   import CustomQuestions from '$lib/components/forms/CustomQuestions.svelte';
   import { fetchLiveForm } from '$lib/scouting/forms/formsClient.js';
   import {
+    CARD_SIZES,
+    TEXT_SIZES,
     createLayout,
     emptyForm,
     firstMissing,
     questionsIn,
-    sanitizeAnswers
+    sanitizeAnswers,
+    shownOnKind
   } from '$lib/scouting/forms/formSchema.js';
   import Select from '$lib/components/common/Select.svelte';
   import { onDestroy, onMount } from 'svelte';
@@ -112,7 +115,22 @@
   const phaseBefore = (current) => kindPhases[kindPhases.indexOf(current) - 1] || 'prematch';
   $: layout = createLayout(customForm.schema, 'match');
   $: orders = layout.orders;
-  const customIn = (id) => questionsIn(customForm.schema, id);
+  const customIn = (id) => questionsIn(customForm.schema, id).filter((question) => shownOnKind(question, reportKind));
+  // A built-in block's place and look from the form design: order, width in the 12-column grid, accent, text size.
+  // `orders` and `layout` are passed in so the markup re-renders when the form loads.
+  function blockStyle(key, orderMap, look) {
+    const style = look.style(key);
+    const span = CARD_SIZES.find((size) => size.key === style.size)?.span;
+    const zoom = TEXT_SIZES.find((size) => size.key === style.textSize)?.scale ?? 1;
+    return [
+      `order:${orderMap.get(`core:${key}`) ?? 0}`,
+      span ? `grid-column: span ${span}` : '',
+      zoom !== 1 ? `zoom:${zoom}` : '',
+      style.accent ? `--accent:${style.accent};--accent-strong:${style.accent}` : ''
+    ]
+      .filter(Boolean)
+      .join(';');
+  }
   // The first phase (from `phases`) that still has an unanswered required added question.
   function missingCustom(phases) {
     // A robot that never came out answers nothing else, added questions included.
@@ -1237,7 +1255,7 @@
           <MapPinned size={20} />
         </div>
         <div class="blocks prematch-blocks">
-          <div class="blk assignment-blk" style="order:{orders.get('core:prematch.assignment') ?? 0}">
+          <div class="blk assignment-blk" style={blockStyle('prematch.assignment', orders, layout)}>
             <div class="assignment-grid">
               <label
                 >Scout name (required)<input
@@ -1290,7 +1308,7 @@
               </fieldset>
             </div>
           </div>
-          <div class="blk" style="order:{orders.get('core:prematch.present') ?? 0}">
+          <div class="blk" style={blockStyle('prematch.present', orders, layout)}>
             <fieldset class="control-group present-card">
               <legend>Did the robot show up to the field?</legend>
               <div class="segmented present-choice">
@@ -1303,7 +1321,7 @@
             </fieldset>
           </div>
           {#if reportKind === 'data'}
-            <div class="blk" style="order:{orders.get('core:prematch.preload') ?? 0}">
+            <div class="blk" style={blockStyle('prematch.preload', orders, layout)}>
               <fieldset class="control-group preload-card">
                 <legend>{layout.label('prematch.preload', 'Preload')} (required)</legend>
                 <div class="segmented preload-choice">
@@ -1314,7 +1332,7 @@
                 </div>
               </fieldset>
             </div>
-            <div class="blk" style="order:{orders.get('core:prematch.start') ?? 0}">
+            <div class="blk" style={blockStyle('prematch.start', orders, layout)}>
               <div class="start-position-block">
                 <div class="start-position-head">
                   <span class="field-label">{layout.label('prematch.start', 'Starting position')}</span>
@@ -1382,7 +1400,7 @@
               </div>
             </div>
           {/if}
-          <CustomQuestions questions={customIn('prematch')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('prematch')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         <div class="section-footer">
           <span
@@ -1415,7 +1433,7 @@
         <div class="auto-layout">
           <div class="auto-controls blocks packed">
             {#if !layout.hidden('auto.ran')}
-              <div class="blk" style="order:{orders.get('core:auto.ran') ?? 0}">
+              <div class="blk" style={blockStyle('auto.ran', orders, layout)}>
                 <div class="control-group">
                   <span class="field-label">{layout.label('auto.ran', 'Did autonomous run?')}</span>
                   <div class="segmented">
@@ -1428,7 +1446,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.points')}
-              <div class="blk tall" style="order:{orders.get('core:auto.points') ?? 0}">
+              <div class="blk tall" style={blockStyle('auto.points', orders, layout)}>
                 <div class="control-group auto-points-control">
                   <label for="auto-points-estimate" class="field-label"
                     >{layout.label('auto.points', 'Estimated points scored')}</label
@@ -1478,7 +1496,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.sources')}
-              <div class="blk tall" style="order:{orders.get('core:auto.sources') ?? 0}">
+              <div class="blk tall" style={blockStyle('auto.sources', orders, layout)}>
                 <fieldset class="control-group">
                   <legend class="field-label"
                     >{layout.label('auto.sources', 'Where did the robot collect fuel?')}</legend
@@ -1496,7 +1514,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.cycles')}
-              <div class="blk" style="order:{orders.get('core:auto.cycles') ?? 0}">
+              <div class="blk" style={blockStyle('auto.cycles', orders, layout)}>
                 <label class="control-group"
                   >{layout.label('auto.cycles', 'Autonomous cycles')}<input
                     class="form-input"
@@ -1510,7 +1528,7 @@
                 >
               </div>
             {/if}
-            <CustomQuestions questions={customIn('auto')} bind:answers={customAnswers} {orders} {showMissing} />
+            <CustomQuestions kind={reportKind} questions={customIn('auto')} bind:answers={customAnswers} {orders} {showMissing} />
           </div>
         </div>
         <div class="section-footer">
@@ -1530,7 +1548,7 @@
           <Timer size={20} />
         </div>
         <div class="blocks packed">
-          <div class="blk" style="order:{orders.get('core:teleop.roles') ?? 0}">
+          <div class="blk" style={blockStyle('teleop.roles', orders, layout)}>
             <section class="t-card" aria-labelledby="t-roles">
               <header class="t-head">
                 <h3 id="t-roles">{layout.label('teleop.roles', 'Observed roles')}</h3>
@@ -1561,7 +1579,7 @@
           </div>
 
           {#if playedDefense}
-            <div class="blk wide" style="order:{orders.get('core:teleop.defense') ?? 0}">
+            <div class="blk wide" style={blockStyle('teleop.defense', orders, layout)}>
               <section class="t-card defense-card" class:ph={$isPhone} aria-labelledby="t-defense">
                 <header class="t-head">
                   <h3 id="t-defense">{layout.label('teleop.defense', 'Defense details')}</h3>
@@ -1652,7 +1670,7 @@
             </div>
           {/if}
 
-          <div class="blk" style="order:{orders.get('core:teleop.balls') ?? 0}">
+          <div class="blk" style={blockStyle('teleop.balls', orders, layout)}>
             <section class="t-card balls-control">
               <header class="t-head">
                 <label for="balls-scored" class="t-title">{layout.label('teleop.balls', 'Balls scored')}</label><span
@@ -1688,7 +1706,7 @@
           </div>
 
           {#if !layout.hidden('teleop.notes') || playedDefense}
-            <div class="blk" style="order:{orders.get('core:teleop.notes') ?? 0}">
+            <div class="blk" style={blockStyle('teleop.notes', orders, layout)}>
               <label class="notes-label scouter-notes"
                 ><span class="t-head"
                   ><span class="t-title">{layout.label('teleop.notes', 'Real-scout observations')}</span
@@ -1708,7 +1726,7 @@
               >
             </div>
           {/if}
-          <CustomQuestions questions={customIn('teleop')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('teleop')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -1731,7 +1749,7 @@
         </div>
         <div class="blocks packed">
           {#if !layout.hidden('shuttling.shuttled')}
-            <div class="blk" style="order:{orders.get('core:shuttling.shuttled') ?? 0}">
+            <div class="blk" style={blockStyle('shuttling.shuttled', orders, layout)}>
               <div class="t-card control-group" role="group" aria-labelledby="s-shuttled">
                 <header class="t-head">
                   <span id="s-shuttled" class="t-title"
@@ -1758,7 +1776,7 @@
           {/if}
           {#if shuttled}
             {#if !layout.hidden('shuttling.amount')}
-              <div class="blk" style="order:{orders.get('core:shuttling.amount') ?? 0}">
+              <div class="blk" style={blockStyle('shuttling.amount', orders, layout)}>
                 <section class="t-card balls-control">
                   <header class="t-head">
                     <label for="shuttle-band" class="t-title">{layout.label('shuttling.amount', 'Fuel shuttled')}</label
@@ -1780,7 +1798,7 @@
               </div>
             {/if}
             {#if !layout.hidden('shuttling.rating')}
-              <div class="blk" style="order:{orders.get('core:shuttling.rating') ?? 0}">
+              <div class="blk" style={blockStyle('shuttling.rating', orders, layout)}>
                 <section class="t-card">
                   <header class="t-head">
                     <h3>{layout.label('shuttling.rating', 'Shuttling effectiveness')}</h3>
@@ -1806,7 +1824,7 @@
               </div>
             {/if}
             {#if !layout.hidden('shuttling.notes')}
-              <div class="blk" style="order:{orders.get('core:shuttling.notes') ?? 0}">
+              <div class="blk" style={blockStyle('shuttling.notes', orders, layout)}>
                 <label class="notes-label"
                   >{layout.label('shuttling.notes', 'Shuttling notes')} (optional)<textarea
                     class="form-input"
@@ -1818,7 +1836,7 @@
               </div>
             {/if}
           {/if}
-          <CustomQuestions questions={customIn('shuttling')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('shuttling')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -1841,7 +1859,7 @@
           <Gauge size={20} />
         </div>
         <div class="blocks">
-          <div class="blk" style="order:{orders.get('core:teleop.ratings') ?? 0}">
+          <div class="blk" style={blockStyle('teleop.ratings', orders, layout)}>
             <section class="t-card">
               <header class="t-head">
                 <h3>{layout.label('teleop.ratings', 'Shot accuracy')}</h3>
@@ -1863,7 +1881,7 @@
             </section>
           </div>
 
-          <div class="blk" style="order:{orders.get('core:performance.bps') ?? 0}">
+          <div class="blk" style={blockStyle('performance.bps', orders, layout)}>
             <section class="t-card">
               <header class="t-head">
                 <label for="bps-slider" class="t-title">Balls per second</label>
@@ -1911,7 +1929,7 @@
           </div>
 
           {#if !layout.hidden('teleop.intake')}
-            <div class="blk" style="order:{orders.get('core:teleop.intake') ?? 0}">
+            <div class="blk" style={blockStyle('teleop.intake', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('teleop.intake', 'Intake speed')}</h3>
@@ -1933,7 +1951,7 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.driver')}
-            <div class="blk" style="order:{orders.get('core:performance.driver') ?? 0}">
+            <div class="blk" style={blockStyle('performance.driver', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('performance.driver', 'Driver skill')}</h3>
@@ -1959,7 +1977,7 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.ranking')}
-            <div class="blk" style="order:{orders.get('core:performance.ranking') ?? 0}">
+            <div class="blk" style={blockStyle('performance.ranking', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('performance.ranking', 'Power ranking')}</h3>
@@ -1981,7 +1999,7 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.notes')}
-            <div class="blk" style="order:{orders.get('core:performance.notes') ?? 0}">
+            <div class="blk" style={blockStyle('performance.notes', orders, layout)}>
               <label class="notes-label"
                 >{layout.label('performance.notes', 'Notes about performance')} (required)<textarea
                   class="form-input"
@@ -1992,7 +2010,7 @@
               >
             </div>
           {/if}
-          <CustomQuestions questions={customIn('performance')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('performance')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -2011,7 +2029,7 @@
           <Wrench size={20} />
         </div>
         <div class="blocks">
-          <div class="blk" style="order:{orders.get('core:teleop.status') ?? 0}">
+          <div class="blk" style={blockStyle('teleop.status', orders, layout)}>
             <div class="t-card control-group" role="group" aria-labelledby="t-status">
               <header class="t-head">
                 <span id="t-status" class="t-title">{layout.label('teleop.status', 'Robot status')}</span><span
@@ -2064,7 +2082,7 @@
               {/if}
             </div>
           </div>
-          <div class="blk" style="order:{orders.get('core:teleop.crash') ?? 0}">
+          <div class="blk" style={blockStyle('teleop.crash', orders, layout)}>
             <div class="t-card control-group" role="group" aria-labelledby="t-crash">
               <header class="t-head">
                 <span id="t-crash" class="t-title">{layout.label('teleop.crash', 'Significant crash')}</span><span
@@ -2103,7 +2121,7 @@
             </div>
           </div>
           {#if !layout.hidden('auto.collision')}
-            <div class="blk" style="order:{orders.get('core:auto.collision') ?? 0}">
+            <div class="blk" style={blockStyle('auto.collision', orders, layout)}>
               <div class="t-card control-group" role="group" aria-labelledby="r-collision">
                 <header class="t-head">
                   <span id="r-collision" class="t-title"
@@ -2135,7 +2153,7 @@
             </div>
           {/if}
           {#if !layout.hidden('robot.intakeJammed')}
-            <div class="blk" style="order:{orders.get('core:robot.intakeJammed') ?? 0}">
+            <div class="blk" style={blockStyle('robot.intakeJammed', orders, layout)}>
               <label class="incident-toggle"
                 ><input type="checkbox" bind:checked={intakeJammed} /><span
                   ><AlertTriangle size={17} />
@@ -2145,7 +2163,7 @@
             </div>
           {/if}
           {#if !layout.hidden('postmatch.cards')}
-            <div class="blk" style="order:{orders.get('core:postmatch.cards') ?? 0}">
+            <div class="blk" style={blockStyle('postmatch.cards', orders, layout)}>
               <div class="post-grid outcome-panel">
                 <fieldset>
                   <legend>{layout.label('postmatch.cards', 'Cards')}</legend>
@@ -2167,7 +2185,7 @@
             </div>
           {/if}
           {#if !layout.hidden('robot.fouls')}
-            <div class="blk" style="order:{orders.get('core:robot.fouls') ?? 0}">
+            <div class="blk" style={blockStyle('robot.fouls', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('robot.fouls', 'Fouls')}</h3>
@@ -2234,7 +2252,7 @@
               </section>
             </div>
           {/if}
-          <div class="blk" style="order:{orders.get('core:postmatch.break') ?? 0}">
+          <div class="blk" style={blockStyle('postmatch.break', orders, layout)}>
             <div class="post-grid outcome-panel">
               <fieldset>
                 <legend>{layout.label('postmatch.break', 'Mechanical break')} (required)</legend>
@@ -2248,7 +2266,7 @@
             </div>
           </div>
           {#if !layout.hidden('robot.breaks') || mechanicalBreak === true}
-            <div class="blk" style="order:{orders.get('core:robot.breaks') ?? 0}">
+            <div class="blk" style={blockStyle('robot.breaks', orders, layout)}>
               <section
                 class="t-card breaks-card"
                 class:emphasis={mechanicalBreak === true ||
@@ -2294,7 +2312,7 @@
             </div>
           {/if}
           {#if !layout.hidden('postmatch.beached')}
-            <div class="blk" style="order:{orders.get('core:postmatch.beached') ?? 0}">
+            <div class="blk" style={blockStyle('postmatch.beached', orders, layout)}>
               <label class="incident-toggle"
                 ><input type="checkbox" bind:checked={beached} /><span
                   ><AlertTriangle size={17} /> {layout.label('postmatch.beached', 'Robot became beached')}</span
@@ -2302,7 +2320,7 @@
               >
             </div>
           {/if}
-          <div class="blk" style="order:{orders.get('core:postmatch.problem') ?? 0}">
+          <div class="blk" style={blockStyle('postmatch.problem', orders, layout)}>
             {#if requiresPitReport}
               <div class="required-handoff">
                 <AlertTriangle size={17} /><span
@@ -2329,7 +2347,7 @@
               >
             {/if}
           </div>
-          <CustomQuestions questions={customIn('robot')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('robot')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         {#if error}<p class="submit-error" role="alert">{error}</p>{/if}
         <div class="section-footer">
@@ -2349,7 +2367,7 @@
         </div>
         <div class="blocks packed">
           {#if !layout.hidden('postmatch.notes')}
-            <div class="blk" style="order:{orders.get('core:postmatch.notes') ?? 0}">
+            <div class="blk" style={blockStyle('postmatch.notes', orders, layout)}>
               <label class="notes-label scouter-notes"
                 >{layout.label('postmatch.notes', 'Post-match scout notes')} (optional)<textarea
                   class="form-input"
@@ -2360,7 +2378,7 @@
               >
             </div>
           {/if}
-          <CustomQuestions questions={customIn('postmatch')} bind:answers={customAnswers} {orders} {showMissing} />
+          <CustomQuestions kind={reportKind} questions={customIn('postmatch')} bind:answers={customAnswers} {orders} {showMissing} />
         </div>
         <div class="section-footer">
           <button class="btn" on:click={() => selectPhase(phaseBefore('postmatch'))}>Back</button><button

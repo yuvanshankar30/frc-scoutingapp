@@ -1,4 +1,4 @@
-import { firstMissing, sanitizeAnswers, sanitizeForm } from '$lib/scouting/forms/formSchema.js';
+import { firstMissing, sanitizeAnswers, sanitizeForm, shownOnKind } from '$lib/scouting/forms/formSchema.js';
 
 // A report carries the answers to the questions an admin added, plus the form version they were
 // answered against. They are checked against that version rather than the live one, so a report
@@ -17,7 +17,12 @@ export async function customAnswersFor(db, form, body) {
   if (error || !data) return { answers: {}, version: null, error: null };
   const schema = sanitizeForm(data.schema, form);
   const answers = sanitizeAnswers(schema, body.custom_answers);
-  const missing = firstMissing(schema.questions, answers);
+  // A match report only has to answer the questions shown on its kind (data, performance or robot).
+  const kind = form === 'match' ? String(body?.report_kind || 'data') : '';
+  const missing = firstMissing(
+    schema.questions.filter((question) => shownOnKind(question, kind)),
+    answers
+  );
   return {
     answers,
     version,

@@ -209,8 +209,35 @@ export const QUESTION_TYPES = Object.freeze({
   counter: { label: 'Counter', blurb: 'Tap to count up or down', icon: 'Plus', options: false },
   number: { label: 'Number', blurb: 'Type a number', icon: 'Hash', options: false },
   text: { label: 'Short text', blurb: 'One line of text', icon: 'Type', options: false },
-  frq: { label: 'Free response', blurb: 'A longer written answer', icon: 'AlignLeft', options: false }
+  frq: { label: 'Free response', blurb: 'A longer written answer', icon: 'AlignLeft', options: false },
+  slider: { label: 'Slider', blurb: 'A number picked on a slider', icon: 'SlidersHorizontal', options: false },
+  picture: { label: 'Picture choice', blurb: 'One answer from picture tiles', icon: 'Image', options: true },
+  grid: {
+    label: 'Grid',
+    blurb: 'One answer per row, like robot status in each shift',
+    icon: 'Grid3x3',
+    options: true
+  }
 });
+
+// How a question's card looks. Every question and every built-in block can carry a style; anything left out uses
+// the defaults, so an old form looks exactly as it did.
+export const CARD_SIZES = Object.freeze([
+  { key: 'auto', label: 'Auto', span: null },
+  { key: 'third', label: 'Third', span: 4 },
+  { key: 'half', label: 'Half', span: 6 },
+  { key: 'two-thirds', label: 'Two thirds', span: 8 },
+  { key: 'full', label: 'Full width', span: 12 }
+]);
+export const TEXT_SIZES = Object.freeze([
+  { key: 'sm', label: 'Small', scale: 0.9 },
+  { key: 'md', label: 'Medium', scale: 1 },
+  { key: 'lg', label: 'Large', scale: 1.15 },
+  { key: 'xl', label: 'Extra large', scale: 1.3 }
+]);
+/** The kinds of match scouting a question can appear on (match form only; an empty list means all of them). */
+export const REPORT_KIND_KEYS = Object.freeze(['data', 'performance', 'robot']);
+export const DEFAULT_STYLE = Object.freeze({ size: 'auto', textSize: 'md', accent: '', image: '' });
 
 export const LIMITS = Object.freeze({
   questions: 60,
@@ -219,7 +246,9 @@ export const LIMITS = Object.freeze({
   options: 20,
   optionLabel: 60,
   text: 200,
-  frq: 2000
+  frq: 2000,
+  rows: 12,
+  sliderMax: 100000
 });
 
 const randomId = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -240,6 +269,12 @@ export function createQuestion(type, section) {
   if (type === 'rating') question.max = 5;
   if (type === 'counter') Object.assign(question, { min: 0, max: 50 });
   if (type === 'number') Object.assign(question, { min: null, max: null });
+  if (type === 'slider') Object.assign(question, { min: 0, max: 40, step: 1 });
+  if (type === 'grid')
+    question.rows = [
+      { id: randomId('r'), label: 'Row 1' },
+      { id: randomId('r'), label: 'Row 2' }
+    ];
   return question;
 }
 
@@ -255,6 +290,8 @@ export function convertQuestion(question, type) {
     required: question.required
   };
   if (QUESTION_TYPES[type].options && question.options?.length) converted.options = question.options;
+  if (question.style) converted.style = question.style;
+  if (question.kinds) converted.kinds = question.kinds;
   return converted;
 }
 
@@ -266,6 +303,28 @@ const text = (value, max) =>
     .slice(0, max);
 const intOrNull = (value) =>
   value === '' || value == null || !Number.isFinite(Number(value)) ? null : Math.trunc(Number(value));
+const numOrNull = (value) => (value === '' || value == null || !Number.isFinite(Number(value)) ? null : Number(value));
+const HEX = /^#[0-9a-f]{6}$/i;
+// Images come from the app's own storage (uploaded in the editor) or another https address.
+const imageUrl = (value) => {
+  const url = String(value ?? '').trim();
+  return url.length <= 500 && /^https:\/\/[^\s"'<>]+$/i.test(url) ? url : '';
+};
+
+/** A card style with only known keys and valid values; defaults are left out so stored forms stay small. */
+export function sanitizeStyle(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const style = {};
+  if (CARD_SIZES.some((size) => size.key === raw.size) && raw.size !== 'auto') style.size = raw.size;
+  if (TEXT_SIZES.some((size) => size.key === raw.textSize) && raw.textSize !== 'md') style.textSize = raw.textSize;
+  if (HEX.test(String(raw.accent || ''))) style.accent = String(raw.accent).toLowerCase();
+  const image = imageUrl(raw.image);
+  if (image) style.image = image;
+  return Object.keys(style).length ? style : undefined;
+}
+
+/** A question's (or block's) style with every key filled in. */
+export const styleOf = (item) => ({ ...DEFAULT_STYLE, ...(item?.style || {}) });
 
 /** Cleans anything an editor or a client sent into a well-formed form, dropping what is not valid. */
 export function sanitizeForm(raw, formType) {
@@ -296,8 +355,35 @@ export function sanitizeForm(raw, formType) {
           let optionId = text(option?.id, 40) || randomId('o');
           if (optionIds.has(optionId)) optionId = randomId('o');
           optionIds.add(optionId);
-          return { id: optionId, label: text(option?.label, LIMITS.optionLabel) || `Option ${index + 1}` };
+          const kept = { id: optionId, label: text(option?.label, LIMITS.optionLabel) || `Option ${index + 1}` };
+          const image = imageUrl(option?.image);
+          if (image) kept.image = image;
+          if (HEX.test(String(option?.color || ''))) kept.color = String(option.color).toLowerCase();
+          return kept;
         });
+    }
+    if (item.type === 'grid') {
+      const rowIds = new Set();
+      question.rows = (Array.isArray(item.rows) ? item.rows : []).slice(0, LIMITS.rows).map((row, index) => {
+        let rowId = text(row?.id, 40) || randomId('r');
+        if (rowIds.has(rowId)) rowId = randomId('r');
+        rowIds.add(rowId);
+        return { id: rowId, label: text(row?.label, LIMITS.optionLabel) || `Row ${index + 1}` };
+      });
+    }
+    if (item.type === 'slider') {
+      const min = numOrNull(item.min) ?? 0;
+      const max = numOrNull(item.max) ?? 10;
+      question.min = Math.max(-LIMITS.sliderMax, Math.min(min, max));
+      question.max = Math.min(LIMITS.sliderMax, Math.max(min, max));
+      const step = numOrNull(item.step);
+      question.step = step && step > 0 ? Math.min(step, question.max - question.min || 1) : 1;
+    }
+    const style = sanitizeStyle(item.style);
+    if (style) question.style = style;
+    if (Array.isArray(item.kinds)) {
+      const kinds = REPORT_KIND_KEYS.filter((kind) => item.kinds.includes(kind));
+      if (kinds.length && kinds.length < REPORT_KIND_KEYS.length) question.kinds = kinds;
     }
     if (item.type === 'rating') question.max = Math.min(10, Math.max(3, intOrNull(item.max) ?? 5));
     if (item.type === 'counter' || item.type === 'number') {
@@ -329,6 +415,8 @@ function sanitizeCore(raw, formType) {
       if (help !== entry.help) kept.help = help;
     }
     if (entry.optional && value.hidden === true) kept.hidden = true;
+    const style = sanitizeStyle(value.style);
+    if (style) kept.style = style;
     if (Object.keys(kept).length) core[key] = kept;
   }
   return core;
@@ -363,6 +451,9 @@ export function formProblems(form) {
       const labels = question.options.map((option) => option.label.trim().toLowerCase());
       if (new Set(labels).size !== labels.length) add(question.id, 'Two options have the same text.');
     }
+    if (question.type === 'grid' && !question.rows?.length) add(question.id, 'Give the grid at least one row.');
+    if (question.type === 'slider' && question.min >= question.max)
+      add(question.id, 'The slider needs a minimum below its maximum.');
     if (
       (question.type === 'counter' || question.type === 'number') &&
       question.min != null &&
@@ -382,6 +473,7 @@ export function coreView(form, entry) {
     label: override.label ?? entry.label,
     help: override.help ?? entry.help,
     hidden: override.hidden === true,
+    style: override.style || null,
     renamed: override.label !== undefined,
     helpChanged: override.help !== undefined
   };
@@ -423,6 +515,8 @@ export function createLayout(form, formType) {
       return help === undefined || help === null ? fallback : help;
     },
     hidden: (key) => view(key).hidden,
+    // A built-in block's card style, with defaults filled in.
+    style: (key) => ({ ...DEFAULT_STYLE, ...(view(key).style || {}) }),
     orders: position
   };
 }
@@ -486,6 +580,9 @@ export function describeDiff(diff) {
 export const questionsIn = (form, section) =>
   (form?.questions || []).filter((question) => question.section === section);
 
+/** Whether a question shows on this kind of match scouting (questions with no kinds show on all of them). */
+export const shownOnKind = (question, kind) => !kind || !question.kinds?.length || question.kinds.includes(kind);
+
 /** Cleans a scout's answers to a form's questions: unknown ids and wrong shapes are dropped. */
 export function sanitizeAnswers(form, raw) {
   const answers = {};
@@ -493,7 +590,7 @@ export function sanitizeAnswers(form, raw) {
     const value = raw?.[question.id];
     if (value === undefined || value === null || value === '') continue;
     const optionIds = new Set((question.options || []).map((option) => option.id));
-    if (['buttons', 'mcq', 'dropdown'].includes(question.type)) {
+    if (['buttons', 'mcq', 'dropdown', 'picture'].includes(question.type)) {
       if (optionIds.has(value)) answers[question.id] = value;
     } else if (question.type === 'checkboxes') {
       const picked = (Array.isArray(value) ? value : []).filter((id) => optionIds.has(id));
@@ -509,6 +606,15 @@ export function sanitizeAnswers(form, raw) {
       if (question.min != null && n < question.min) continue;
       if (question.max != null && n > question.max) continue;
       answers[question.id] = question.type === 'counter' ? Math.trunc(n) : n;
+    } else if (question.type === 'slider') {
+      const n = Number(value);
+      if (Number.isFinite(n) && n >= question.min && n <= question.max) answers[question.id] = n;
+    } else if (question.type === 'grid') {
+      const rowIds = new Set((question.rows || []).map((row) => row.id));
+      const picked = {};
+      for (const [rowId, optionId] of Object.entries(value && typeof value === 'object' ? value : {}))
+        if (rowIds.has(rowId) && optionIds.has(optionId)) picked[rowId] = optionId;
+      if (Object.keys(picked).length) answers[question.id] = picked;
     } else if (question.type === 'text') answers[question.id] = text(value, LIMITS.text);
     else if (question.type === 'frq') answers[question.id] = text(value, LIMITS.frq);
   }
@@ -518,6 +624,8 @@ export function sanitizeAnswers(form, raw) {
 export const isAnswered = (question, answers) => {
   const value = answers?.[question.id];
   if (question.type === 'counter') return value !== undefined;
+  if (question.type === 'grid')
+    return (question.rows || []).every((row) => value && typeof value === 'object' && value[row.id] !== undefined);
   if (Array.isArray(value)) return value.length > 0;
   return value !== undefined && value !== null && value !== '';
 };
