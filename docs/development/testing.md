@@ -5,10 +5,9 @@ same commands.
 
 | What | Command |
 | --- | --- |
-| Unit tests (also the UI rules, API auth and formatting checks) | `npm test` (or `npx vitest run`) |
+| Unit tests (also the UI rules and API auth checks) | `npm test` (or `npx vitest run`) |
 | Svelte and type check (fails on warnings too) | `npm run check` |
 | Lint: undefined names, dead code | `npm run lint` |
-| Format with Prettier, after every code change (config in `prettier/`) | `npm run format` |
 | A production build | `npm run build` (needs `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_ANON_KEY` set) |
 
 The unit tests need no network and no database: Supabase and The Blue Alliance are mocked.

@@ -9,6 +9,6 @@ Every pull request updates these docs. This page is the how-to.
    - MAJOR: a new or rewritten page (or folder), added to `docs/README.md` and the folder's README.
    - MINOR: a new section on the page, or a new page for a new screen.
    - PATCH fix: correct anything the fix made wrong.
-3. **Add a row to [VERSION.md](../../VERSION.md)** that names the version, the date, what changed, and links the page.
+3. **Add a row to [VERSION.md](../VERSION.md)** that names the version, the date, what changed, and links the page.
 
 Keep pages short and plain: what it does, where the code is, what tables or APIs it uses. Missing data is "—", never 0.

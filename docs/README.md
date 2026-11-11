@@ -1,7 +1,7 @@
 # Documentation
 
 How the site works **now**, sorted by where things live in the site: one folder per menu group, one page per screen or
-tab. For **when** something changed, see [VERSION.md](../VERSION.md).
+tab. For **when** something changed, see [VERSION.md](VERSION.md).
 
 New here? Start with the [README](../README.md) (setup and deployment), then
 [Team settings](scouting-admin/team-settings.md).
