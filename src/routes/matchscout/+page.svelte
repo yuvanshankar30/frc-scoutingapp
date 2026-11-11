@@ -1561,92 +1561,91 @@
           </div>
 
           {#if playedDefense}
-            <div class="blk" style="order:{orders.get('core:teleop.defense') ?? 0}">
+            <div class="blk wide" style="order:{orders.get('core:teleop.defense') ?? 0}">
               <section class="t-card defense-card" class:ph={$isPhone} aria-labelledby="t-defense">
                 <header class="t-head">
                   <h3 id="t-defense">{layout.label('teleop.defense', 'Defense details')}</h3>
                   <span class="tag req">Required</span>
                 </header>
-                <div class="def-row">
-                  <span class="def-label" id="def-targets">Defended</span>
-                  <div class="def-targets" role="group" aria-labelledby="def-targets">
-                    {#each defenseChoices as target (target)}
-                      {@const number = target.replace(/^frc/, '')}
-                      <button
-                        class="def-chip"
-                        aria-pressed={defenseTargets.includes(target)}
-                        class:chosen={defenseTargets.includes(target)}
-                        title={teamNames[number] || ''}
-                        on:click={() => (defenseTargets = toggleIn(defenseTargets, target))}
-                        >{#if defenseTargets.includes(target)}<Check size={14} />{/if}{number}</button
-                      >
-                    {/each}
-                    {#if !opponents.length && defenseTargets.length < 3}
-                      <form class="def-add" on:submit|preventDefault={addDefenseTarget}>
-                        <input
-                          class="form-input"
-                          autocapitalize="characters"
-                          placeholder={matchTeamsLoading ? 'Loading…' : 'Team #'}
-                          aria-label="Add a robot it defended"
-                          bind:value={defenseTargetInput}
-                        /><button
-                          type="submit"
-                          class="def-chip def-add-btn"
-                          aria-label="Add robot"
-                          disabled={!defenseTargetInput.trim()}><Plus size={15} /></button
+                <div class="def-sections">
+                  <div class="def-row">
+                    <span class="def-label" id="def-targets">Robots it defended</span>
+                    <div class="def-targets" role="group" aria-labelledby="def-targets">
+                      {#each defenseChoices as target (target)}
+                        {@const number = target.replace(/^frc/, '')}
+                        <button
+                          class="def-chip"
+                          aria-pressed={defenseTargets.includes(target)}
+                          class:chosen={defenseTargets.includes(target)}
+                          title={teamNames[number] || ''}
+                          on:click={() => (defenseTargets = toggleIn(defenseTargets, target))}
+                          >{#if defenseTargets.includes(target)}<Check size={14} />{/if}{number}</button
                         >
-                      </form>
-                    {/if}
-                  </div>
-                </div>
-                <div class="def-row">
-                  <span class="def-label" id="def-hub">Its hub</span>
-                  <div class="pill-bar" role="group" aria-labelledby="def-hub">
-                    {#each DEFENSE_PERIODS as period}
-                      <button
-                        aria-pressed={defensePeriods.includes(period)}
-                        class:chosen={defensePeriods.includes(period)}
-                        on:click={() => (defensePeriods = toggleIn(defensePeriods, period))}
-                        >{period === 'active' ? 'Active' : 'Inactive'}</button
-                      >
-                    {/each}
-                  </div>
-                </div>
-                <div class="def-row">
-                  <span class="def-label" id="def-shifts">Shifts</span>
-                  <div class="pill-bar" role="group" aria-labelledby="def-shifts">
-                    {#each MATCH_SHIFTS as shift (shift.key)}
-                      <button
-                        aria-pressed={defenseShifts.includes(shift.key)}
-                        aria-label={shift.label}
-                        class:chosen={defenseShifts.includes(shift.key)}
-                        on:click={() => (defenseShifts = toggleIn(defenseShifts, shift.key))}
-                        >{shift.key === 'endgame' ? 'End' : shift.label.replace('Shift ', '')}</button
-                      >
-                    {/each}
-                  </div>
-                </div>
-                <div class="def-row">
-                  <span class="def-label" id="def-rate"
-                    >Effect{#if defenseEffectiveness}<b>{defenseEffectiveness}/{DEFENSE_EFFECTIVENESS_MAX}</b
-                      >{/if}</span
-                  >
-                  <div class="def-rate">
-                    <!-- Phones: two rows of five, so every number is a full-size tap target. -->
-                    {#each $isPhone ? [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]] : [Array.from({ length: DEFENSE_EFFECTIVENESS_MAX }, (_, index) => index + 1)] as row}
-                      <div class="pill-bar" role="group" aria-labelledby="def-rate">
-                        {#each row as value}
-                          <button
-                            aria-pressed={defenseEffectiveness === value}
-                            aria-label={`Defense effectiveness: ${value} of ${DEFENSE_EFFECTIVENESS_MAX}`}
-                            class:chosen={defenseEffectiveness === value}
-                            on:click={() => (defenseEffectiveness = toggleScale(defenseEffectiveness, value))}
-                            >{value}</button
+                      {/each}
+                      {#if !opponents.length && defenseTargets.length < 3}
+                        <form class="def-add" on:submit|preventDefault={addDefenseTarget}>
+                          <input
+                            class="form-input"
+                            autocapitalize="characters"
+                            placeholder={matchTeamsLoading ? 'Loading…' : 'Team #'}
+                            aria-label="Add a robot it defended"
+                            bind:value={defenseTargetInput}
+                          /><button
+                            type="submit"
+                            class="def-chip def-add-btn"
+                            aria-label="Add robot"
+                            disabled={!defenseTargetInput.trim()}><Plus size={15} /></button
                           >
-                        {/each}
-                      </div>
-                    {/each}
-                    <div class="def-ends"><span>No effect</span><span>Shut them down</span></div>
+                        </form>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="def-row">
+                    <span class="def-label" id="def-hub">When it defended</span>
+                    <div class="pill-bar" role="group" aria-labelledby="def-hub">
+                      {#each DEFENSE_PERIODS as period}
+                        <button
+                          aria-pressed={defensePeriods.includes(period)}
+                          class:chosen={defensePeriods.includes(period)}
+                          on:click={() => (defensePeriods = toggleIn(defensePeriods, period))}
+                          >{period === 'active' ? 'Hub active' : 'Hub inactive'}</button
+                        >
+                      {/each}
+                    </div>
+                    <div class="pill-bar" role="group" aria-label="Shifts it defended in">
+                      {#each MATCH_SHIFTS as shift (shift.key)}
+                        <button
+                          aria-pressed={defenseShifts.includes(shift.key)}
+                          aria-label={shift.label}
+                          class:chosen={defenseShifts.includes(shift.key)}
+                          on:click={() => (defenseShifts = toggleIn(defenseShifts, shift.key))}
+                          >{shift.key === 'endgame' ? 'Endgame' : shift.label}</button
+                        >
+                      {/each}
+                    </div>
+                  </div>
+                  <div class="def-row">
+                    <span class="def-label" id="def-rate"
+                      >Effectiveness{#if defenseEffectiveness}<b>{defenseEffectiveness}/{DEFENSE_EFFECTIVENESS_MAX}</b
+                        >{/if}</span
+                    >
+                    <div class="def-rate">
+                      <!-- Phones: two rows of five, so every number is a full-size tap target. -->
+                      {#each $isPhone ? [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]] : [Array.from({ length: DEFENSE_EFFECTIVENESS_MAX }, (_, index) => index + 1)] as row}
+                        <div class="pill-bar" role="group" aria-labelledby="def-rate">
+                          {#each row as value}
+                            <button
+                              aria-pressed={defenseEffectiveness === value}
+                              aria-label={`Defense effectiveness: ${value} of ${DEFENSE_EFFECTIVENESS_MAX}`}
+                              class:chosen={defenseEffectiveness === value}
+                              on:click={() => (defenseEffectiveness = toggleScale(defenseEffectiveness, value))}
+                              >{value}</button
+                            >
+                          {/each}
+                        </div>
+                      {/each}
+                      <div class="def-ends"><span>1 · No effect</span><span>10 · Shut them down</span></div>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -3258,21 +3257,38 @@
     display: grid;
     gap: var(--space-3);
   }
+  /* Defense details span the whole row: who it defended, when, and how well, side by side when there is room and
+     stacked when there isn't. Each has its label above it. */
+  .blocks.packed > .blk.wide {
+    grid-column: 1 / -1;
+  }
+  .def-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--space-4) var(--space-5);
+    align-items: start;
+  }
   .def-row {
     display: grid;
-    grid-template-columns: 4.5rem minmax(0, 1fr);
-    gap: var(--gap-2);
-    align-items: center;
+    gap: 0.5rem;
+    align-content: start;
+    min-width: 0;
   }
   .def-label {
-    display: grid;
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    font-weight: 600;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    justify-content: space-between;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
   .def-label b {
-    color: var(--secondary);
+    color: var(--text-strong, var(--text));
     font-size: 0.95rem;
+    letter-spacing: 0;
   }
   .def-targets {
     display: flex;
@@ -3285,9 +3301,9 @@
     gap: 0.25rem;
     align-items: center;
     justify-content: center;
-    min-width: 4rem;
-    height: 2.4rem;
-    padding: 0 0.75rem;
+    min-width: 4.5rem;
+    height: 2.75rem;
+    padding: 0 0.9rem;
     border: 1px solid var(--border);
     border-radius: 999px;
     background: var(--surface-1);
@@ -3297,9 +3313,9 @@
     cursor: pointer;
   }
   .def-chip.chosen {
-    border-color: var(--brand-gold-strong);
-    background: var(--brand-gold-soft);
-    color: var(--secondary);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-1));
+    color: var(--text-strong, var(--text));
   }
   .def-add {
     display: inline-flex;
@@ -3307,13 +3323,13 @@
     margin: 0;
   }
   .def-add .form-input {
-    width: 6.5rem;
-    height: 2.4rem;
+    width: 7.5rem;
+    height: 2.75rem;
     min-height: 0;
     border-radius: 999px;
   }
   .def-add-btn {
-    min-width: 2.4rem;
+    min-width: 2.75rem;
     padding: 0;
   }
   .def-add-btn:disabled {
@@ -3325,12 +3341,12 @@
     display: flex;
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
   }
   .pill-bar button {
     flex: 1 1 0;
     min-width: 0;
-    height: 2.4rem;
+    height: 2.75rem;
     padding: 0 0.25rem;
     border: 0;
     border-left: 1px solid var(--border);
@@ -3345,10 +3361,10 @@
     border-left: 0;
   }
   .pill-bar button.chosen {
-    background: var(--brand-gold-soft);
-    box-shadow: inset 0 0 0 1px var(--brand-gold-strong);
-    color: var(--secondary);
-    font-weight: 700;
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-1));
+    box-shadow: inset 0 0 0 1px var(--accent);
+    color: var(--text-strong, var(--text));
+    font-weight: 650;
   }
   /* Phones: labels above each control and thumb-size segments. */
   .defense-card.ph .def-row {
@@ -3437,8 +3453,9 @@
   .def-ends {
     display: flex;
     justify-content: space-between;
+    margin-top: 0.15rem;
     color: var(--text-muted);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
   .defense-prompt {
     display: flex;
