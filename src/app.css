@@ -3089,10 +3089,9 @@ label:has(> .select),
   font-family: var(--font-body);
   /* One soft glow of the theme's accent in the top-right corner, fixed to
      the window. */
-  background-image: radial-gradient(
-    1100px 620px at 88% -8%,
-    color-mix(in srgb, var(--accent) 9%, transparent),
-    transparent 70%
+  background-image: var(
+    --app-glow,
+    radial-gradient(1100px 620px at 88% -8%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%)
   );
   background-attachment: fixed;
 }
@@ -3118,6 +3117,7 @@ label:has(> .select),
 /* A word set in Instrument Serif italic inside a Space Grotesk heading or
    the brand name (the app name in the top bar). */
 .serif-accent {
+  color: var(--accent-2, inherit);
   font-family: var(--font-serif, Georgia, serif);
   font-style: italic;
   font-weight: 400;

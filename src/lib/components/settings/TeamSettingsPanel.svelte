@@ -6,7 +6,8 @@
   import TeamSettingsForm from '$lib/components/settings/TeamSettingsForm.svelte';
   import TeamMark from '$lib/components/common/TeamMark.svelte';
   import { authFetch } from '$lib/app/supabase.js';
-  import { applyBrand } from '$lib/app/brand.js';
+  import { applyBrand, clearBrand } from '$lib/app/brand.js';
+  import { normalizeAppearance } from '$lib/app/appearance.js';
   import { DEFAULT_BRAND_COLOR } from '$lib/app/teamSettings.js';
   import { setTeam, team } from '$lib/stores/team.js';
   import { theme } from '$lib/stores/theme.js';
@@ -25,7 +26,8 @@
     defaultTheme: settings?.defaultTheme || 'dark',
     timeZone: settings?.timeZone || 'UTC',
     hiddenFeatures: [...(settings?.hiddenFeatures || [])],
-    allowSignUp: settings?.allowSignUp !== false
+    allowSignUp: settings?.allowSignUp !== false,
+    appearance: { ...normalizeAppearance(settings?.appearance) }
   });
 
   let form = formFrom($team);
@@ -34,9 +36,9 @@
   let successMsg = '';
   let logoInput;
 
-  // Preview the color while editing; leaving the page puts the saved one back.
-  $: applyBrand(form.brandColor, $theme);
-  onDestroy(() => applyBrand($team?.brandColor, $theme));
+  // Preview the color and look while editing; leaving the page puts the saved ones back.
+  $: applyBrand(form.brandColor, $theme, form.appearance);
+  onDestroy(clearBrand);
 
   async function post(body) {
     const response = await authFetch('/api/team-settings', {
@@ -117,10 +119,13 @@
   {#if successMsg}<div class="status-message status-success" role="status">{successMsg}</div>{/if}
 
   <div class="logo-row">
-    <TeamMark size={56} />
+    <TeamMark size={56} preview={form.appearance} />
     <div class="logo-actions">
       <b>Logo</b>
-      <small>PNG, JPEG or WebP, up to 256 KB. Square images look best. Without one, the team number is shown.</small>
+      <small
+        >PNG, JPEG or WebP, up to 256 KB. Square images look best. Without one, the badge from Appearance below is
+        shown.</small
+      >
       <div class="logo-buttons">
         <input
           bind:this={logoInput}

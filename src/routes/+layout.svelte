@@ -10,12 +10,14 @@
   import { applyTeamDefaultTheme, theme } from '$lib/stores/theme.js';
   import { setTeam, team } from '$lib/stores/team.js';
   import { brandCssVars } from '$lib/app/teamSettings.js';
+  import { appearanceCssVars } from '$lib/app/appearance.js';
   import TeamMark from '$lib/components/common/TeamMark.svelte';
   import { supabaseConfigured } from '$lib/app/supabaseConfig.js';
   import { dev } from '$app/environment';
   import { activeEventKey, primeActiveEvent, refreshActiveEvent } from '$lib/stores/activeEvent.js';
   import { displayEventCode } from '$lib/scouting/eventCode.js';
   import ConfirmationDialog from '$lib/components/common/ConfirmationDialog.svelte';
+  import SiteSearch from '$lib/components/common/SiteSearch.svelte';
   import { watchTables } from '$lib/ui/responsiveTables.js';
   import {
     BOTTOM_BAR_LABELS,
@@ -29,6 +31,7 @@
     ArrowUpDown,
     CalendarClock,
     CalendarDays,
+    ChevronDown,
     ClipboardCheck,
     ClipboardList,
     Database,
@@ -102,19 +105,40 @@
       .join(' ')} }`;
   $: brandStyle = $team
     ? [
-        cssBlock('html:root[data-theme="modern"]', brandCssVars($team.brandColor, 'modern')),
-        cssBlock('html:root[data-theme="modern-dark"]', brandCssVars($team.brandColor, 'modern-dark'))
+        cssBlock('html:root:root[data-theme="modern"]', {
+          ...appearanceCssVars($team.appearance, 'modern', $team.brandColor),
+          ...brandCssVars($team.brandColor, 'modern')
+        }),
+        cssBlock('html:root:root[data-theme="modern-dark"]', {
+          ...appearanceCssVars($team.appearance, 'modern-dark', $team.brandColor),
+          ...brandCssVars($team.brandColor, 'modern-dark')
+        })
       ].join('\n')
     : '';
   $: appName = $team?.appName || 'Scouting';
   // The app name with its last word set in the serif accent, like the Hub's brand.
-  $: brandWords = String(appName).trim().split(/\s+/);
+  $: brandWords = $team?.appearance?.serifAccent === false ? [appName] : String(appName).trim().split(/\s+/);
   $: brandHead = brandWords.length > 1 ? `${brandWords.slice(0, -1).join(' ')} ` : appName;
   $: brandTail = brandWords.length > 1 ? brandWords.at(-1) : '';
 
   const RAIL_STORAGE_KEY = 'scouting-rail-collapsed';
   let collapsed = false;
   let menuOpen = false;
+  let searchOpen = false;
+  // Menu groups someone folded away (kept on this device). Every group starts open.
+  const CLOSED_GROUPS_KEY = 'scouting-closed-groups';
+  let closedGroups = [];
+  const groupHasCurrent = (group) => group.items.some((item) => item.key === current?.key);
+  function toggleGroup(key) {
+    closedGroups = closedGroups.includes(key) ? closedGroups.filter((k) => k !== key) : [...closedGroups, key];
+    try {
+      localStorage.setItem(CLOSED_GROUPS_KEY, JSON.stringify(closedGroups));
+    } catch {
+      /* storage can be unavailable */
+    }
+  }
+  // Ctrl on Windows and Linux, the Command key on Apple devices.
+  let modKey = 'Ctrl';
   let stageEl;
   // A short fade-up on the page area whenever the route changes. Restarted by toggling
   // the class rather than re-creating the page, so nested layouts keep their state.
@@ -183,6 +207,12 @@
   // The phone bar follows the person's competition role (see bottomBarKeys).
   $: bottomItems = bottomBarItems($userProfile?.roster_keys || [], $team?.hiddenFeatures || []);
   $: current = activeItem(pathname, true);
+  // Everything the search can open: Home, every page in this person's menu, and Account.
+  $: searchPages = [
+    { key: 'home', label: 'Home', href: '/', blurb: 'Next match, assignments and coverage', group: '' },
+    ...groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.label }))),
+    { key: 'account', label: 'Account', href: '/account', blurb: 'Your name, theme and password', group: '' }
+  ];
   // Pages outside the menu (Quick Scout, Note Scout, ...) are named from their address, not called Home.
   const PAGE_TITLES = {
     quickscout: 'Quick Scout',
@@ -203,8 +233,11 @@
   }
 
   onMount(() => {
+    modKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
     try {
       collapsed = localStorage.getItem(RAIL_STORAGE_KEY) === '1';
+      const saved = JSON.parse(localStorage.getItem(CLOSED_GROUPS_KEY) || '[]');
+      closedGroups = Array.isArray(saved) ? saved.filter((key) => typeof key === 'string') : [];
     } catch {
       /* storage can be unavailable */
     }
@@ -283,14 +316,25 @@
         </button>
       </div>
 
+      <button
+        type="button"
+        class="rail-search"
+        on:click={() => (searchOpen = true)}
+        title={collapsed ? 'Search (Ctrl K)' : undefined}
+        aria-label="Search pages and teams"><Search size={16} /><span>Search</span><kbd>{modKey} K</kbd></button
+      >
+
       <nav class="rail-nav">
         <a class="rail-home" class:active={isActive(pathname, '/')} href="/" title={collapsed ? 'Home' : undefined}
           ><House size={18} /><span>Home</span></a
         >
         {#each groups as group (group.key)}
-          <div class="rail-group">
-            <p class="rail-label">{group.label}</p>
-            {#each group.items as item (item.key)}
+          {@const folded = !collapsed && closedGroups.includes(group.key) && !groupHasCurrent(group)}
+          <div class="rail-group" class:folded>
+            <button type="button" class="rail-label" aria-expanded={!folded} on:click={() => toggleGroup(group.key)}
+              ><span>{group.label}</span><ChevronDown size={13} /></button
+            >
+            {#each folded ? [] : group.items as item (item.key)}
               <a
                 class="rail-link"
                 class:active={current?.key === item.key}
@@ -342,9 +386,14 @@
           >
           <span class="strip-title">{stripTitle}</span>
         </div>
-        {#if $activeEventKey}
-          <span class="strip-event" title="Active competition code">{displayEventCode($activeEventKey)}</span>
-        {/if}
+        <div class="strip-right">
+          {#if $activeEventKey}
+            <span class="strip-event" title="Active competition code">{displayEventCode($activeEventKey)}</span>
+          {/if}
+          <button type="button" class="icon-btn strip-search" on:click={() => (searchOpen = true)} aria-label="Search"
+            ><Search size={18} /></button
+          >
+        </div>
       </header>
 
       {#if canAdmin && !$team?.teamNumber}
@@ -407,6 +456,7 @@
 {/if}
 
 <ConfirmationDialog />
+{#if $user && !isLogin}<SiteSearch bind:open={searchOpen} pages={searchPages} />{/if}
 
 <style>
   .set-team {
@@ -574,6 +624,78 @@
   .rail-group {
     display: grid;
     gap: 2px;
+  }
+  /* A group's label folds its pages away; the chevron turns when it is folded. */
+  button.rail-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.15rem var(--space-2) 0.15rem 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+  button.rail-label:hover {
+    color: var(--text);
+  }
+  button.rail-label :global(svg) {
+    opacity: 0.7;
+    transition: transform 0.18s ease;
+  }
+  .rail-group.folded button.rail-label :global(svg) {
+    transform: rotate(-90deg);
+  }
+  .rail-search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .rail-search:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .rail-search span {
+    flex: 1;
+    text-align: left;
+  }
+  .rail-search kbd {
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    font-family: inherit;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .shell.collapsed .rail-search {
+    justify-content: center;
+    padding: 0;
+  }
+  .shell.collapsed .rail-search span,
+  .shell.collapsed .rail-search kbd {
+    display: none;
+  }
+  .strip-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .strip .strip-search {
+    display: none;
   }
   .rail-label {
     margin: 0 0 var(--space-1) var(--space-3);
@@ -824,6 +946,12 @@
     }
     .rail {
       display: none;
+    }
+    .strip .strip-search {
+      display: inline-grid;
+      width: var(--tap-min);
+      height: var(--tap-min);
+      border: 0;
     }
     /* No menu button on phones: "More" in the bottom bar opens the same menu. */
     .menu-btn {

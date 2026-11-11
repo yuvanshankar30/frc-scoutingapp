@@ -2,7 +2,9 @@
   // The team's settings form, used by Scouting Admin > Team settings. It edits a
   // plain object (`value`) in the shape validateTeamSettingsInput() expects; the page decides what to do with it.
   import Select from '$lib/components/common/Select.svelte';
+  import TeamMark from '$lib/components/common/TeamMark.svelte';
   import { OPTIONAL_FEATURES, PRESET_BRAND_COLORS, normalizeHexColor } from '$lib/app/teamSettings.js';
+  import { CORNERS, FONTS, MARK_SHAPES, MARK_STYLES, PALETTES } from '$lib/app/appearance.js';
 
   export let value;
   export let disabled = false;
@@ -23,6 +25,18 @@
     value.brandColor = color;
     hexText = color;
   };
+
+  // The second color works like the brand color, and can be left empty to follow the brand color.
+  let secondText = value.appearance.secondaryColor;
+  $: if (normalizeHexColor(secondText, null)) value.appearance.secondaryColor = normalizeHexColor(secondText);
+  const pickSecond = (color) => {
+    value.appearance.secondaryColor = color;
+    secondText = color;
+  };
+  $: previewName = String(
+    value.appName || (value.teamNumber ? `${value.teamNumber} Scouting` : 'Team Scouting')
+  ).trim();
+  $: previewWords = previewName.split(/\s+/);
 
   function toggleFeature(key, shown) {
     const hidden = new Set(value.hiddenFeatures || []);
@@ -129,6 +143,176 @@
 </fieldset>
 
 <fieldset class="tsf" {disabled}>
+  <legend class="tsf-legend">Appearance</legend>
+  <div class="tsf-preview" aria-label="Preview">
+    <div class="pv-brand">
+      <TeamMark size={40} preview={value.appearance} badgeOnly />
+      <div>
+        <b class="pv-name"
+          >{#if value.appearance.serifAccent && previewWords.length > 1}{previewWords.slice(0, -1).join(' ')}
+            <span class="serif-accent">{previewWords.at(-1)}</span>{:else}{previewName}{/if}</b
+        >
+        <small>{value.appearance.tagline || 'Your tagline shows on the sign-in page.'}</small>
+      </div>
+    </div>
+    <div class="pv-row">
+      <span class="btn btn-primary btn-sm">Primary</span>
+      <span class="btn btn-outline btn-sm">Outline</span>
+      <span class="pv-chip">Chip</span>
+      <span class="pv-card">Card</span>
+    </div>
+  </div>
+
+  <div class="tsf-field">
+    <span class="tsf-label" id="tsf-palette-label">Palette</span>
+    <div class="tsf-palettes" role="group" aria-labelledby="tsf-palette-label">
+      {#each PALETTES as palette (palette.key)}
+        <button
+          type="button"
+          class="palette"
+          class:on={value.appearance.palette === palette.key}
+          aria-pressed={value.appearance.palette === palette.key}
+          on:click={() => (value.appearance.palette = palette.key)}
+        >
+          <span class="palette-swatches" aria-hidden="true">
+            <i style:background={palette.dark[0]}></i><i style:background={palette.dark[2]}></i><i
+              style:background={palette.light[0]}
+            ></i><i style:background={value.brandColor}></i>
+          </span>
+          <span>{palette.label}</span>
+        </button>
+      {/each}
+    </div>
+    <small>The page and card colors, for both dark and light. The brand color stays the accent.</small>
+  </div>
+
+  <div class="tsf-field">
+    <span class="tsf-label" id="tsf-second-label">Second color</span>
+    <div class="tsf-colors" role="group" aria-labelledby="tsf-second-label">
+      <button
+        type="button"
+        class="tsf-same"
+        class:on={!value.appearance.secondaryColor}
+        aria-pressed={!value.appearance.secondaryColor}
+        on:click={() => pickSecond('')}>Same as brand</button
+      >
+      {#each PRESET_BRAND_COLORS as color (color)}
+        <button
+          type="button"
+          class="swatch"
+          class:on={value.appearance.secondaryColor === color}
+          style:background={color}
+          aria-label={`Use the second color ${color}`}
+          aria-pressed={value.appearance.secondaryColor === color}
+          on:click={() => pickSecond(color)}
+        ></button>
+      {/each}
+      <input
+        class="tsf-picker"
+        type="color"
+        aria-label="Pick any second color"
+        value={value.appearance.secondaryColor || value.brandColor}
+        on:input={(event) => pickSecond(event.currentTarget.value)}
+      />
+      <input class="form-input tsf-hex" aria-label="Second hex color" maxlength="7" bind:value={secondText} />
+    </div>
+    <small>The serif word in the app name and the soft glow behind the page.</small>
+  </div>
+
+  <div class="tsf-row">
+    <div class="tsf-field grow">
+      <span class="tsf-label" id="tsf-font-label">Font</span>
+      <div class="tsf-fonts" role="group" aria-labelledby="tsf-font-label">
+        {#each FONTS as font (font.key)}
+          <button
+            type="button"
+            class="font"
+            class:on={value.appearance.font === font.key}
+            aria-pressed={value.appearance.font === font.key}
+            on:click={() => (value.appearance.font = font.key)}
+            ><b style:font-family={font.display}>Aa</b><span>{font.label}</span></button
+          >
+        {/each}
+      </div>
+    </div>
+  </div>
+
+  <div class="tsf-row">
+    <div class="tsf-field">
+      <span class="tsf-label" id="tsf-corners-label">Corners</span>
+      <div class="tsf-seg" role="group" aria-labelledby="tsf-corners-label">
+        {#each CORNERS as corner (corner.key)}
+          <button
+            type="button"
+            class:on={value.appearance.corners === corner.key}
+            on:click={() => (value.appearance.corners = corner.key)}>{corner.label}</button
+          >
+        {/each}
+      </div>
+    </div>
+  </div>
+
+  <div class="tsf-row">
+    <div class="tsf-field">
+      <span class="tsf-label" id="tsf-mark-shape">Badge shape</span>
+      <div class="tsf-seg" role="group" aria-labelledby="tsf-mark-shape">
+        {#each MARK_SHAPES as shape (shape.key)}
+          <button
+            type="button"
+            class:on={value.appearance.markShape === shape.key}
+            on:click={() => (value.appearance.markShape = shape.key)}>{shape.label}</button
+          >
+        {/each}
+      </div>
+    </div>
+    <div class="tsf-field">
+      <span class="tsf-label" id="tsf-mark-style">Badge style</span>
+      <div class="tsf-seg" role="group" aria-labelledby="tsf-mark-style">
+        {#each MARK_STYLES as style (style.key)}
+          <button
+            type="button"
+            class:on={value.appearance.markStyle === style.key}
+            on:click={() => (value.appearance.markStyle = style.key)}>{style.label}</button
+          >
+        {/each}
+      </div>
+    </div>
+    <div class="tsf-field">
+      <label for="tsf-mark-text">Badge text</label>
+      <input
+        id="tsf-mark-text"
+        class="form-input"
+        maxlength="4"
+        placeholder={value.teamNumber || 'Team number'}
+        bind:value={value.appearance.markText}
+      />
+    </div>
+  </div>
+  <small>The badge shows in the menu when there is no logo.</small>
+
+  <div class="tsf-field">
+    <label for="tsf-tagline">Tagline <span class="opt">(optional)</span></label>
+    <input
+      id="tsf-tagline"
+      class="form-input"
+      maxlength="80"
+      placeholder="Scouting for the Robo Raptors"
+      bind:value={value.appearance.tagline}
+    />
+    <small>Shown under the app name on the sign-in page.</small>
+  </div>
+
+  <label class="tsf-check">
+    <input type="checkbox" bind:checked={value.appearance.serifAccent} />
+    <span><b>Serif accent in the app name</b><small>Sets the last word of the app name in italic serif.</small></span>
+  </label>
+  <label class="tsf-check">
+    <input type="checkbox" bind:checked={value.appearance.glow} />
+    <span><b>Background glow</b><small>A soft glow of the second color in the top corner of every page.</small></span>
+  </label>
+</fieldset>
+
+<fieldset class="tsf" {disabled}>
   <legend class="tsf-legend">Event days</legend>
   <div class="tsf-field">
     <label for="tsf-tz">Timezone</label>
@@ -163,6 +347,108 @@
 </fieldset>
 
 <style>
+  .tsf-preview {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--background);
+    background-image: var(--app-glow, none);
+  }
+  .pv-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .pv-brand > div {
+    display: grid;
+    gap: 2px;
+  }
+  .pv-name {
+    font-family: var(--font-body, var(--font-display));
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-strong, var(--text));
+  }
+  .pv-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .pv-row .btn {
+    pointer-events: none;
+  }
+  .pv-chip {
+    padding: 0.2rem 0.7rem;
+    border-radius: var(--radius-full);
+    background: var(--accent-subtle);
+    color: var(--accent-strong);
+    font-size: 0.8rem;
+  }
+  .pv-card {
+    padding: 0.45rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    font-size: 0.85rem;
+  }
+  .tsf-palettes,
+  .tsf-fonts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: var(--space-2);
+  }
+  .palette,
+  .font {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.86rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .palette.on,
+  .font.on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .palette-swatches {
+    display: flex;
+    gap: 3px;
+  }
+  .palette-swatches i {
+    flex: 1;
+    height: 1.4rem;
+    border-radius: var(--radius-xs);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent);
+  }
+  .font b {
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1;
+  }
+  .tsf-same {
+    min-height: 2rem;
+    padding: 0 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+  .tsf-same.on {
+    border-color: var(--accent);
+    color: var(--text);
+  }
   .tsf {
     border: 0;
     margin: 0;

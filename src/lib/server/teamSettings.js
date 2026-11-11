@@ -18,7 +18,8 @@ let cached = null;
 let cachedAt = 0;
 
 export const SETTINGS_COLUMNS =
-  'team_number, team_name, other_team_numbers, app_name, app_short_name, brand_color, default_theme, time_zone, logo_url, hidden_features, allow_sign_up';
+  'team_number, team_name, other_team_numbers, app_name, app_short_name, brand_color, default_theme, time_zone, logo_url, hidden_features, allow_sign_up, appearance';
+const LEGACY_COLUMNS = SETTINGS_COLUMNS.replace(', appearance', '');
 
 /**
  * { settings, error }: settings has teamNumber null until an admin sets the team. error is set when the database
@@ -29,11 +30,12 @@ export async function loadTeamSettings({ fresh = false, db = null } = {}) {
   let result;
   try {
     const client = db || getSupabase();
-    const { data, error } = await withTimeout(
-      client.from('app_settings').select(SETTINGS_COLUMNS).eq('id', 1).maybeSingle(),
-      READ_TIMEOUT_MS,
-      TIMED_OUT
-    );
+    const read = (columns) =>
+      withTimeout(client.from('app_settings').select(columns).eq('id', 1).maybeSingle(), READ_TIMEOUT_MS, TIMED_OUT);
+    let { data, error } = await read(SETTINGS_COLUMNS);
+    // A database without the appearance migration (20260105000000_team_appearance.sql) still loads, with the
+    // default look, instead of stopping every page.
+    if (error && /appearance/.test(error.message || '')) ({ data, error } = await read(LEGACY_COLUMNS));
     if (error) result = { settings: null, error: error.message || 'Could not read app_settings' };
     else result = { settings: normalizeTeamSettings(data), error: null };
   } catch (error) {

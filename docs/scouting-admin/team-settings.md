@@ -35,3 +35,19 @@ Changes take effect for everyone the next time they load the site (the server ca
 `src/routes/api/team-settings/+server.js` (saving and the logo upload to the `branding` bucket),
 `src/lib/app/teamSettings.js` (validation and brand colors), `src/lib/server/teamSettings.js` (reading and caching),
 table `app_settings`.
+
+## Appearance
+
+Team settings > Appearance sets the look beyond the brand color, with a live preview at the top of the section.
+Everything is stored in `app_settings.appearance` (one JSON object) and checked in `src/lib/app/appearance.js`, which
+also turns it into the CSS variables the page head carries for both themes.
+
+| Setting | Choices |
+| --- | --- |
+| Palette | Ink and cream, Graphite, Midnight, Forest, Plum, Ember: page and card colors for dark and light |
+| Second color | Same as the brand color, or any color: the serif word in the app name and the background glow |
+| Font | Space Grotesk, Inter, Barlow (condensed headings), serif headings, system |
+| Corners | Round, soft, square |
+| Badge | Shape (rounded square, circle, square), style (ink, outline, filled) and text (up to 4 characters, the team number by default); shown when there is no logo |
+| Tagline | Up to 80 characters, under the app name on the sign-in page |
+| Switches | Serif accent in the app name; background glow |

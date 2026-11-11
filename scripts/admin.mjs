@@ -6,6 +6,8 @@
 //   npm run admin -- set-team --number 1234 --name "Robo Raptors" [--app-name "..."] [--short-name "..."]
 //                             [--color "#dc2626"] [--theme dark|light] [--timezone America/Chicago]
 //                             [--other-teams "5678,9012"] [--sign-up on|off] [--hide "assistant,epa"]
+//                             [--palette ink|graphite|midnight|forest|plum|ember] [--font grotesk|inter|barlow|serif|system]
+//                             [--corners round|soft|square]
 //   npm run admin -- show
 //   npm run admin -- approve --email someone@example.com
 //
@@ -103,7 +105,14 @@ export async function setTeam(db, options) {
     defaultTheme: options.theme ?? current.defaultTheme,
     timeZone: options.timezone ?? current.timeZone,
     hiddenFeatures: options.hide !== undefined ? list(options.hide) : current.hiddenFeatures,
-    allowSignUp: options['sign-up'] !== undefined ? !/^(off|false|no|0)$/i.test(options['sign-up']) : current.allowSignUp
+    allowSignUp: options['sign-up'] !== undefined ? !/^(off|false|no|0)$/i.test(options['sign-up']) : current.allowSignUp,
+    // The rest of the look is kept unless an option changes it (see appearance.js for the choices).
+    appearance: {
+      ...current.appearance,
+      ...(options.palette !== undefined && { palette: options.palette }),
+      ...(options.font !== undefined && { font: options.font }),
+      ...(options.corners !== undefined && { corners: options.corners })
+    }
   };
   const { value, error } = validateTeamSettingsInput(input, { isValidTimeZone });
   if (error) throw new Error(error);
