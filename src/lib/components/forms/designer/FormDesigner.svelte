@@ -4,6 +4,7 @@
   // move them between sections, drag a card's right edge to resize it, and change everything else in the panel on the
   // right. Work is saved as a draft automatically; Publish makes it the live form. Every published version is kept in
   // History and can be brought back. The built-in form (src/lib/scouting/forms/formSchema.js) is always the baseline.
+  import { coreChoiceLists, sanitizeChoices } from '$lib/scouting/forms/coreChoices.js';
   import { onDestroy, onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import {
@@ -121,6 +122,26 @@
     if (formType === 'match' && sectionKind && kindView && sectionKind !== kindView) kindView = sectionKind;
     sendToFrame(shown, selectedId, kindView || sectionKind || frameKind, phase);
   }
+  // A title, answer, option or grid row renamed by double-clicking it on the form itself.
+  function renameFromFrame({ id, part, value, text }) {
+    const label = String(text || '').trim();
+    if (!label) return;
+    selectedId = id;
+    if (id.startsWith('core:')) {
+      const key = id.slice(5);
+      if (part === 'label') patchCore(key, { label });
+      else if (part === 'choice') patchCore(key, { choices: { ...(form.core?.[key]?.choices || {}), [value]: label } });
+      return;
+    }
+    const question = form.questions.find((entry) => entry.id === id);
+    if (!question) return;
+    if (part === 'label') patchQuestion(id, { label });
+    else if (part === 'option')
+      patchQuestion(id, { options: question.options.map((o) => (o.id === value ? { ...o, label } : o)) });
+    else if (part === 'row')
+      patchQuestion(id, { rows: question.rows.map((r) => (r.id === value ? { ...r, label } : r)) });
+  }
+
   function onFrameMessage(event) {
     if (event.origin !== window.location.origin || event.source !== frame?.contentWindow) return;
     const data = event.data || {};
@@ -136,6 +157,8 @@
     } else if (data.type === 'design-move' && !readonly) {
       const target = data.beforeId ? findItem(form, data.beforeId) : null;
       moveItem(data.id, target?.section || data.section, target ? data.beforeId : null);
+    } else if (data.type === 'design-rename' && !readonly) {
+      renameFromFrame(data);
     } else if (data.type === 'design-add' && !readonly && QUESTION_TYPES[data.questionType]) {
       const target = data.beforeId ? findItem(form, data.beforeId) : null;
       const section = target?.section || (sections.some((entry) => entry.id === data.section) ? data.section : sections[0].id);
@@ -298,6 +321,12 @@
     if (merged.help !== undefined && merged.help === entry.help) delete merged.help;
     if (!merged.hidden) delete merged.hidden;
     if (merged.required === entry.required) delete merged.required;
+    // Choice wording, hidden choices and their order are kept only where they differ from the built-in answers.
+    const choices = sanitizeChoices(merged, coreChoiceLists(formType, key)) || {};
+    delete merged.choices;
+    delete merged.hiddenChoices;
+    delete merged.choiceOrder;
+    Object.assign(merged, choices);
     const core = { ...(form.core || {}) };
     if (Object.keys(merged).length) core[key] = merged;
     else delete core[key];

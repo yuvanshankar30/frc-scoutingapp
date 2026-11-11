@@ -1,5 +1,5 @@
 <script>
-  // Strategy > Meetings: for each of our next matches, when to set up the alliance strategy meeting, when to hold
+  // Strategy > Matches: for each of our next matches, when to set up the alliance strategy meeting, when to hold
   // it, when the pit crew needs the plan and when to tell the drive coach (see src/lib/scouting/meetingPlan.js). Partner
   // phone numbers come from pit scouting ("Strat person's phone number"). Phones get one stacked card per match.
   import { onMount } from 'svelte';

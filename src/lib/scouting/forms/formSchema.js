@@ -7,7 +7,7 @@
 // The built-in questions are grouped into blocks. Every block can be reworded, restyled, moved, hidden and made
 // required or optional: games change from year to year, so nothing is locked. `optional: false` here only sets the
 // starting point, required; an admin can change it. The one exception is the match, robot and alliance a report is
-// for, which every report needs. `help: null` means the block has no help text to edit.
+// for, which every report needs. Every block's help text can be edited (empty means none is shown).
 const block = (key, label, { help = null, optional = true, note = '' } = {}) => ({
   key,
   label,
@@ -21,6 +21,7 @@ const block = (key, label, { help = null, optional = true, note = '' } = {}) => 
 // The built-in forms for this season come from JSON files in the repo's scouting-forms/ folder (one folder per
 // game), so a new game is a new folder, not a code change. Each file lists the form's sections and their built-in
 // questions; the designer (Scouting Admin > Edit) changes everything else and can export and import the same format.
+import { arrangeChoices, coreChoiceLists, sanitizeChoices } from './coreChoices.js';
 import matchForm from '$forms/2026-rebuilt/match.json';
 import pitForm from '$forms/2026-rebuilt/pit.json';
 
@@ -34,7 +35,7 @@ export function formDefinition(file) {
       label: section.label,
       blocks: section.blocks.map((entry) =>
         block(entry.key, entry.label, {
-          help: entry.help ?? null,
+          help: entry.help ?? '',
           optional: entry.required ? false : true,
           note: entry.note || ''
         })
@@ -276,6 +277,7 @@ function sanitizeCore(raw, formType) {
     if (typeof value.required === 'boolean' && value.required !== entry.required) kept.required = value.required;
     const style = sanitizeStyle(value.style);
     if (style) kept.style = style;
+    Object.assign(kept, sanitizeChoices(value, coreChoiceLists(formType, key)) || {});
     if (Object.keys(kept).length) core[key] = kept;
   }
   return core;
@@ -334,6 +336,9 @@ export function coreView(form, entry) {
     hidden: override.hidden === true,
     required: override.required ?? entry.required,
     style: override.style || null,
+    choices: override.choices || {},
+    hiddenChoices: override.hiddenChoices || [],
+    choiceOrder: override.choiceOrder || [],
     renamed: override.label !== undefined,
     helpChanged: override.help !== undefined
   };
@@ -381,6 +386,9 @@ export function createLayout(form, formType) {
     shown: (key) => !view(key).hidden,
     // A built-in block's card style, with defaults filled in.
     style: (key) => ({ ...DEFAULT_STYLE, ...(view(key).style || {}) }),
+    // The wording of one of a built-in block's answers, and a list of its answers without hidden ones, in order.
+    choice: (key, value, fallback = '') => form?.core?.[key]?.choices?.[value] || fallback,
+    choices: (key, items) => arrangeChoices(form?.core?.[key], items),
     orders: position
   };
 }

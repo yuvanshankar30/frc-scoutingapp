@@ -114,6 +114,15 @@ export const MARK_STYLES = Object.freeze([
   { key: 'ink', label: 'Ink' }
 ]);
 
+// What the browser tab shows next to the page title.
+export const TAB_ICONS = Object.freeze([
+  { key: 'badge', label: 'Team badge' },
+  { key: 'logo', label: 'Team logo' },
+  { key: 'custom', label: 'Own image' },
+  { key: 'app', label: 'App icon' }
+]);
+export const APP_TAB_ICON = '/favicon.png';
+
 export const DEFAULT_APPEARANCE = Object.freeze({
   palette: 'ink',
   secondaryColor: '',
@@ -127,10 +136,19 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   glow: true,
   tertiaryColor: '',
   backgroundDark: '',
-  backgroundLight: ''
+  backgroundLight: '',
+  tabIcon: 'badge',
+  tabIconUrl: ''
 });
 
 const keyIn = (list, value, fallback) => (list.some((item) => item.key === value) ? value : fallback);
+
+// Only web addresses (an uploaded file's public URL); http is allowed for a local Supabase.
+function imageUrlOrEmpty(value) {
+  const url = typeof value === 'string' ? value.trim() : '';
+  if (!url || url.length > 500) return '';
+  return /^https:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(url) ? url : '';
+}
 
 /** The appearance as the app uses it, from the stored JSON (or what an admin submitted). Always complete. */
 export function normalizeAppearance(raw) {
@@ -149,7 +167,9 @@ export function normalizeAppearance(raw) {
     glow: (value.glow ?? d.glow) ? true : false,
     tertiaryColor: hexOrEmpty(value.tertiaryColor ?? value.tertiary_color),
     backgroundDark: hexOrEmpty(value.backgroundDark ?? value.background_dark),
-    backgroundLight: hexOrEmpty(value.backgroundLight ?? value.background_light)
+    backgroundLight: hexOrEmpty(value.backgroundLight ?? value.background_light),
+    tabIcon: keyIn(TAB_ICONS, value.tabIcon ?? value.tab_icon, d.tabIcon),
+    tabIconUrl: imageUrlOrEmpty(value.tabIconUrl ?? value.tab_icon_url)
   };
 }
 
@@ -169,7 +189,9 @@ export function appearanceColumn(raw) {
     glow: a.glow,
     tertiary_color: a.tertiaryColor,
     background_dark: a.backgroundDark,
-    background_light: a.backgroundLight
+    background_light: a.backgroundLight,
+    tab_icon: a.tabIcon,
+    tab_icon_url: a.tabIconUrl
   };
 }
 
@@ -267,4 +289,34 @@ export function markLabel(appearance, settings) {
   return (
     a.markText || (settings?.teamNumber ? String(settings.teamNumber) : (settings?.appShortName || 'S').slice(0, 1))
   );
+}
+
+const xmlEscape = (value) =>
+  String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+/** The logo badge as a small SVG picture (a data: URL) for the browser tab, in the badge's shape, style and color. */
+export function badgeIconHref(appearance, settings, accent = '') {
+  const a = normalizeAppearance(appearance);
+  const color = /^#[0-9a-f]{6}$/i.test(accent) ? accent : '#d6453d';
+  const label = markLabel(a, settings);
+  const radius = a.markShape === 'circle' ? 32 : a.markShape === 'square' ? 4 : 16;
+  const size = label.length <= 2 ? 34 : label.length === 3 ? 27 : label.length === 4 ? 21 : 17;
+  const fill = a.markStyle === 'filled' ? color : a.markStyle === 'ink' ? '#16130f' : mixHex(color, '#ffffff', 0.85);
+  const ink = a.markStyle === 'filled' ? '#ffffff' : color;
+  const stroke = a.markStyle === 'filled' ? '' : ` stroke="${color}" stroke-width="3"`;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+    `<rect x="1.5" y="1.5" width="61" height="61" rx="${radius}" fill="${fill}"${stroke}/>` +
+    `<text x="32" y="33" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" ` +
+    `font-weight="700" font-size="${size}" fill="${ink}">${xmlEscape(label)}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/** What the browser tab shows: the chosen icon, falling back to the badge when the logo or image is missing. */
+export function tabIconHref(appearance, settings, accent = '') {
+  const a = normalizeAppearance(appearance);
+  if (a.tabIcon === 'app') return APP_TAB_ICON;
+  if (a.tabIcon === 'custom' && a.tabIconUrl) return a.tabIconUrl;
+  if (a.tabIcon === 'logo' && settings?.logoUrl) return settings.logoUrl;
+  return badgeIconHref(a, settings, accent);
 }

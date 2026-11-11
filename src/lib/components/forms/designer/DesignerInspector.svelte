@@ -16,6 +16,8 @@
     styleOf
   } from '$lib/scouting/forms/formSchema.js';
   import { uploadFormImage } from '$lib/scouting/forms/formsClient.js';
+  import { arrangeChoices, coreChoiceLists } from '$lib/scouting/forms/coreChoices.js';
+  import { Eye, EyeOff } from 'lucide-svelte';
   import { PRESET_BRAND_COLORS } from '$lib/app/teamSettings.js';
 
   /** { kind: 'custom', question } or { kind: 'core', block, view }. */
@@ -35,6 +37,38 @@
   $: block = item?.kind === 'core' ? item.block : null;
   $: style = styleOf(question || { style: view?.style });
   $: meta = question ? QUESTION_TYPES[question.type] : null;
+
+  // A built-in block's answer lists, each in the admin's order (hidden answers stay listed so they can come back).
+  $: choiceLists = block ? coreChoiceLists(formType, block.key) : [];
+  $: hiddenChoices = new Set(view?.hiddenChoices || []);
+  $: arranged = choiceLists.map((list) => ({
+    ...list,
+    options: list.fixed ? list.options : arrangeChoices({ choiceOrder: view?.choiceOrder }, list.options)
+  }));
+  const coreChange = (changes, group) => dispatch('core', { changes, group });
+  function renameChoice(value, label) {
+    coreChange({ choices: { ...(view.choices || {}), [value]: label } }, `choice-${value}`);
+  }
+  function toggleChoice(list, value) {
+    const hidden = new Set(view.hiddenChoices || []);
+    if (hidden.has(value)) hidden.delete(value);
+    else {
+      const shown = list.options.filter(([option]) => !hidden.has(option));
+      if (shown.length <= 1) return;
+      hidden.add(value);
+    }
+    coreChange({ hiddenChoices: [...hidden] });
+  }
+  function moveChoice(list, index, direction) {
+    const values = list.options.map(([value]) => value);
+    const to = index + direction;
+    if (to < 0 || to >= values.length) return;
+    [values[index], values[to]] = [values[to], values[index]];
+    const others = arranged
+      .filter((other) => !other.fixed && other.id !== list.id)
+      .flatMap((other) => other.options.map(([value]) => value));
+    coreChange({ choiceOrder: [...others, ...values] });
+  }
 
   const patch = (changes, group) => dispatch('patch', { changes, group });
   const patchStyle = (changes) => dispatch('style', { ...style, ...changes });
@@ -174,18 +208,16 @@
             />
           </label>
         {/if}
-        {#if block.help !== null}
-          <label class="field"
-            >Help text
-            <textarea
-              class="form-input"
-              rows="2"
-              maxlength={LIMITS.help}
-              value={view.help || ''}
-              on:input={(e) => dispatch('core', { changes: { help: e.currentTarget.value }, group: 'help' })}
-            ></textarea>
-          </label>
-        {/if}
+        <label class="field"
+          >Help text
+          <textarea
+            class="form-input"
+            rows="2"
+            maxlength={LIMITS.help}
+            value={view.help || ''}
+            on:input={(e) => dispatch('core', { changes: { help: e.currentTarget.value }, group: 'help' })}
+          ></textarea>
+        </label>
         {#if block.optional}
           <label class="switch">
             <input
@@ -210,6 +242,59 @@
         {/if}
       {/if}
     </section>
+
+    {#if block && arranged.length}
+      <section class="group" transition:slide={{ duration: 150 }}>
+        <h4>Choices</h4>
+        <p class="note small">
+          Reword what the scout taps. Reports keep saving the same answer, so analysis and exports don't change.
+        </p>
+        {#each arranged as list (list.id)}
+          {#if arranged.length > 1}<span class="list-title">{list.title}</span>{/if}
+          <ul class="choice-list">
+            {#each list.options as [value, label], index (value)}
+              <li class:off={hiddenChoices.has(value)}>
+                <input
+                  class="form-input"
+                  maxlength="60"
+                  aria-label={`Wording for ${label}`}
+                  value={view.choices?.[value] || label}
+                  placeholder={label}
+                  disabled={readonly}
+                  on:input={(e) => renameChoice(value, e.currentTarget.value)}
+                />
+                {#if !list.fixed}
+                  <button
+                    class="icon"
+                    type="button"
+                    disabled={readonly}
+                    title={hiddenChoices.has(value) ? 'Show this choice' : 'Hide this choice'}
+                    aria-label={hiddenChoices.has(value) ? `Show ${label}` : `Hide ${label}`}
+                    on:click={() => toggleChoice(list, value)}
+                    >{#if hiddenChoices.has(value)}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</button
+                  >
+                  <button
+                    class="icon"
+                    type="button"
+                    disabled={readonly || index === 0}
+                    aria-label={`Move ${label} up`}
+                    on:click={() => moveChoice(list, index, -1)}><ArrowUp size={14} /></button
+                  >
+                  <button
+                    class="icon"
+                    type="button"
+                    disabled={readonly || index === list.options.length - 1}
+                    aria-label={`Move ${label} down`}
+                    on:click={() => moveChoice(list, index, 1)}><ArrowDown size={14} /></button
+                  >
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/each}
+        <p class="note small">Tip: double-click a choice on the form to rename it there.</p>
+      </section>
+    {/if}
 
     {#if question && meta?.options}
       <section class="group" transition:slide={{ duration: 150 }}>
@@ -639,5 +724,31 @@
     align-items: center;
     gap: 0.4rem;
     cursor: pointer;
+  }
+  .list-title {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .choice-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .choice-list li {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .choice-list li .form-input {
+    flex: 1;
+    min-width: 0;
+  }
+  .choice-list li.off .form-input {
+    opacity: 0.5;
+    text-decoration: line-through;
   }
 </style>

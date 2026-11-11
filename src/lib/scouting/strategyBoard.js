@@ -131,6 +131,11 @@ export function matchTimeline(teamKey, matches = [], entries = []) {
       (observation) => [observation.matchKey, observation]
     )
   );
+  // How many scouting reports each match's numbers come from (shown when hovering a bar).
+  const reportCount = new Map();
+  for (const entry of entries || [])
+    if (entry?.team_key === teamKey && entry.match_key)
+      reportCount.set(entry.match_key, (reportCount.get(entry.match_key) || 0) + 1);
   const noShows = new Set(
     (entries || [])
       .filter((entry) => entry?.team_key === teamKey && entry.robot_present === false)
@@ -155,6 +160,9 @@ export function matchTimeline(teamKey, matches = [], entries = []) {
         opponentScore: played ? opponentScore : null,
         result: !played ? null : score > opponentScore ? 'win' : score < opponentScore ? 'loss' : 'tie',
         points: observation?.points ?? null,
+        autoPoints: observation?.auto ?? null,
+        teleopPoints: observation?.balls ?? null,
+        reports: reportCount.get(match.key) || 0,
         incident: observation?.incident === true,
         noShow: noShows.has(match.key)
       };

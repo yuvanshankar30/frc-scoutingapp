@@ -4,6 +4,7 @@ import { json } from '@sveltejs/kit';
 import { requireApprovedUser } from '$lib/server/scouting/scoutingAccess.js';
 import { canEditTeamSettings, decodeLogo, loadTeamSettings, saveTeamSettings } from '$lib/server/teamSettings.js';
 import { validateTeamSettingsInput } from '$lib/app/teamSettings.js';
+import { appearanceColumn, normalizeAppearance } from '$lib/app/appearance.js';
 import { isValidTimeZone } from '$lib/app/timezone.js';
 import { getSupabase } from '$lib/server/serviceClient.js';
 
@@ -53,8 +54,41 @@ export async function POST({ request }) {
     return json({ success: true, settings }, { headers: NO_STORE });
   }
 
+  // Browser tab icon: an uploaded picture, saved straight into the appearance (Team settings > Browser tab icon).
+  if (body.action === 'upload-tab-icon' || body.action === 'remove-tab-icon') {
+    const current = (await loadTeamSettings({ fresh: true })).settings;
+    const appearance = normalizeAppearance(current?.appearance);
+    let url = '';
+    if (body.action === 'upload-tab-icon') {
+      const icon = decodeLogo(body.dataUrl);
+      if (icon.error) return json({ error: icon.error }, { status: 400, headers: NO_STORE });
+      const path = `tab-icon-${Date.now()}.${LOGO_TYPES[icon.type]}`;
+      const uploaded = await db.storage
+        .from('branding')
+        .upload(path, icon.bytes, { contentType: icon.type, upsert: false });
+      if (uploaded.error) return json({ error: uploaded.error.message }, { status: 500, headers: NO_STORE });
+      url = db.storage.from('branding').getPublicUrl(path).data.publicUrl;
+    }
+    const tabIcon = url ? 'custom' : appearance.tabIcon === 'custom' ? 'badge' : appearance.tabIcon;
+    const next = { ...appearance, tabIconUrl: url, tabIcon };
+    const settings = await saveTeamSettings({ appearance: appearanceColumn(next), updated_by: access.actorId }, { db });
+    const oldPath = (appearance.tabIconUrl || '').split('/branding/')[1];
+    if (oldPath)
+      await db.storage
+        .from('branding')
+        .remove([decodeURIComponent(oldPath)])
+        .catch(() => {});
+    return json({ success: true, settings }, { headers: NO_STORE });
+  }
+
   const { value, error } = validateTeamSettingsInput(body.settings, { isValidTimeZone });
   if (error) return json({ error }, { status: 400, headers: NO_STORE });
+  // The tab icon's picture only changes through upload-tab-icon, so a save can't point it at any other address.
+  if (value.appearance) {
+    const stored = normalizeAppearance((await loadTeamSettings({ fresh: true })).settings?.appearance);
+    value.appearance = { ...value.appearance, tab_icon_url: stored.tabIconUrl };
+    if (value.appearance.tab_icon === 'custom' && !stored.tabIconUrl) value.appearance.tab_icon = 'badge';
+  }
   try {
     const settings = await saveTeamSettings({ ...value, updated_by: access.actorId }, { db });
     return json({ success: true, settings }, { headers: NO_STORE });

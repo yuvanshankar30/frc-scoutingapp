@@ -16,6 +16,11 @@
           "note": "Scout name, match number, robot number and alliance. Every report needs these."
         },
         {
+          "key": "prematch.present",
+          "label": "Did the robot show up to the field?",
+          "required": true
+        },
+        {
           "key": "prematch.preload",
           "label": "Preload",
           "required": true,
@@ -135,7 +140,8 @@
           "key": "performance.bps",
           "label": "Balls per second",
           "required": true,
-          "note": "A slider; its 1-5 band also fills the older BPS rating."
+          "note": "A slider; its 1-5 band also fills the older BPS rating.",
+          "help": "Drag to the robot's typical scoring rate while it was shooting."
         },
         {
           "key": "teleop.intake",
@@ -171,7 +177,8 @@
           "key": "teleop.status",
           "label": "Robot status",
           "required": true,
-          "note": "Active, dead or stopped for each shift (1-4) and endgame."
+          "note": "Active, dead or stopped for each shift (1-4) and endgame.",
+          "help": "One answer for every shift and the endgame."
         },
         {
           "key": "teleop.crash",
@@ -197,7 +204,7 @@
         {
           "key": "robot.fouls",
           "label": "Fouls",
-          "help": "Count the fouls called on this robot. Leave at — if you could not tell.",
+          "help": "Count the fouls called on this robot. Leave at \u2014 if you could not tell.",
           "required": false,
           "note": "Any foul asks for its nature from a dropdown."
         },

@@ -17,14 +17,13 @@
   - how they play (teleop roles) and saved autos
   - pit capability, open pit problems and scout notes
   - scouting reports by kind (Data, Performance, Robot), latest three with "Show all"
-- **Meetings tab:** when to plan strategy with each alliance before our next matches (see below).
-- **Scout accuracy tab:** scouting checked against TBA per alliance and per scout (see below).
+- **Matches tab:** when to plan strategy with each alliance before our next matches (see below).
 
 Numbers come from the EPA model (official scores anchored to match scouting, [epa](epa.md)), match and pit
 scouting, and TBA rankings. The old Matches tab is gone: our upcoming matches are in the overview, and any team's
 next matches are in its brief.
 
-### Meetings tab
+### Matches tab
 
 For each of our next six matches, a card with our partners and four steps, counted in matches from the TBA schedule
 (`src/lib/scouting/meetingPlan.js`, shown by `StrategyMeetings.svelte`):
@@ -40,13 +39,3 @@ For each of our next six matches, a card with our partners and four steps, count
 Each step shows the match it lines up with and its expected time. Steps whose slot has gone by are dimmed and the
 next one is highlighted (re-checked every minute). When we play early in the schedule, steps that would fall before
 the first match say to do them as soon as you can. Tapping a partner opens their brief.
-
-### Scout accuracy
-
-For each played match, the three robots' scouted numbers are added up per alliance (scouts covering the same robot
-are averaged) and compared with TBA's breakdown: fuel scored, auto points, and the fouls the alliance committed. Only
-alliances with all three robots scouted count toward the totals; partial ones are listed with the missing robot
-named. It also checks whether the alliance with more scouted fuel actually won, and, per scout, how much of TBA's
-fuel their alliances added up to and how they compare with other scouts on the same robot. Logic:
-`src/lib/scouting/scoutAccuracy.js`.
-

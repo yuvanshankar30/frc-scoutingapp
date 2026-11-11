@@ -1,9 +1,18 @@
 # Setting up the app
 
-This is the full guide for whoever runs the server. The [README](../../README.md) explains what the app is.
+This guide is for whoever runs the server. The [README](README.md) explains what the app is.
 
-You need **Node.js 22 or newer**, a free **[Supabase](https://supabase.com)** project and a free
-**[The Blue Alliance](https://www.thebluealliance.com/account) read API key**.
+## What you need
+
+- **A database.** The app keeps its data, accounts and photos in [Supabase](https://supabase.com) (Postgres with
+  sign-in and file storage built in). The free tier is plenty for one team. Use Supabase's hosted service, or run
+  Supabase yourself, for example on a Google Cloud virtual machine.
+- **A place to run it.** The app is a standard Node.js web server (Node 22 or newer) and also ships as a Docker image
+  (`deploy/Dockerfile`), so it runs almost anywhere: Google Cloud Run, Firebase App Hosting, Render, Fly.io, Railway, a
+  school server, or a laptop in the pits. [Deployment](docs/architecture/deployment.md) has the details.
+- **A [Blue Alliance](https://www.thebluealliance.com/account) read API key** (free) for schedules, teams and results.
+- **Optional:** a Slack bot for notifications, an AI API key for the assistant, and a Google service account for the
+  Google Sheets export.
 
 ## 1. Get the code
 
@@ -35,7 +44,7 @@ back to it.
 cp .env.example .env
 ```
 
-Fill in `.env` ([every variable is explained in Deployment](../architecture/deployment.md#environment)). The required ones:
+Fill in `.env` ([every variable is explained in Deployment](docs/architecture/deployment.md#environment)). The required ones:
 
 | Variable | Where to find it |
 | --- | --- |

@@ -13,6 +13,7 @@
   import { setTeam, team } from '$lib/stores/team.js';
   import { brandCssVars } from '$lib/app/teamSettings.js';
   import { appearanceCssVars } from '$lib/app/appearance.js';
+  import { showTeamTabIcon } from '$lib/app/tabIcon.js';
   import TeamMark from '$lib/components/common/TeamMark.svelte';
   import { supabaseConfigured } from '$lib/app/supabaseConfig.js';
   import { dev } from '$app/environment';
@@ -236,6 +237,9 @@
   $: if (browser && $authReady && !$user && !isLogin) {
     void goto(`/login?next=${encodeURIComponent(pathname + $page.url.search)}`, { replaceState: true });
   }
+
+  // The browser tab shows the team's chosen icon (Team settings > Browser tab icon).
+  $: if (browser) showTeamTabIcon($team);
 
   onMount(() => {
     modKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';

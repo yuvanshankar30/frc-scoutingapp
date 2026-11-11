@@ -1,14 +1,14 @@
 <script>
   // Strategy: a Team View-style brief for any team at the event, with the team list beside it (a bottom
-  // sheet on phones), your team's next matches on top, and Scout accuracy as its own tab. Numbers come from the event's
-  // EPA model (official scores anchored to our scouting, #171), match scouting, pit scouting and TBA rankings.
+  // sheet on phones), your team's next matches on top, and a Matches tab that plans each upcoming match with the
+  // partners. Numbers come from the event's EPA model (official scores anchored to our scouting), match scouting, pit
+  // scouting and TBA rankings.
   import { onMount } from 'svelte';
   import { AlertTriangle, RefreshCw, Search } from 'lucide-svelte';
   import { isPhone } from '$lib/stores/device.js';
   import BottomSheet from '$lib/components/common/BottomSheet.svelte';
   import Select from '$lib/components/common/Select.svelte';
   import SeasonFilter from '$lib/components/common/SeasonFilter.svelte';
-  import ScoutAccuracy from '$lib/components/strategy/ScoutAccuracy.svelte';
   import StrategyMeetings from '$lib/components/strategy/StrategyMeetings.svelte';
   import StrategyTeamBrief from '$lib/components/strategy/StrategyTeamBrief.svelte';
   import { getAuthHeader } from '$lib/app/supabase.js';
@@ -43,7 +43,7 @@
   let teamSearch = '';
   let sortKey = 'epa';
   let selectedTeamKey = '';
-  let view = 'teams'; // 'teams' | 'meetings' | 'accuracy'
+  let view = 'teams'; // 'teams' | 'meetings'
   // Phones open the brief in a sheet only when a team is tapped; desktop always shows one.
   let sheetOpen = false;
 
@@ -61,7 +61,7 @@
   // Performance scouts rank every robot they watched, so a team's power rank comes from all reports, not only its own.
   $: powerRankByTeam = new Map(averagePowerRankings(entries).teams.map((team) => [team.team_key, team]));
   $: nameByTeam = new Map(eventTeams.map((team) => [team.key, team.nickname || team.name || '']));
-  // Each team's strat person's phone, from pit scouting, for the Meetings tab.
+  // Each team's strat person's phone, from pit scouting, for the Matches tab.
   $: phoneByTeam = new Map(
     rows
       .map((row) => [row.teamKey, String(row.pitEntry?.technical_details?.strat_phone || '').trim()])
@@ -326,28 +326,20 @@
         role="tab"
         aria-selected={view === 'meetings'}
         class:on={view === 'meetings'}
-        on:click={() => (view = 'meetings')}>Meetings</button
-      >
-      <button
-        role="tab"
-        aria-selected={view === 'accuracy'}
-        class:on={view === 'accuracy'}
-        on:click={() => (view = 'accuracy')}>Scout accuracy</button
+        on:click={() => (view = 'meetings')}>Matches</button
       >
     </div>
     {#if matchesWarning}<p class="muted">{matchesWarning}</p>{/if}
     {#if teamsWarning}<p class="muted">{teamsWarning} Showing teams found in scouting data.</p>{/if}
 
-    {#if view === 'accuracy'}
-      <ScoutAccuracy matches={scheduledMatches} {entries} />
-    {:else if view === 'meetings'}
+    {#if view === 'meetings'}
       <StrategyMeetings
         matches={scheduledMatches}
         teamKey={OUR_TEAM_KEY}
         {phoneByTeam}
         {nameByTeam}
         onSelectTeam={(key) => {
-          // Only leave Meetings when the partner is on the board, or the tap would land on an empty brief.
+          // Only leave Matches when the partner is on the board, or the tap would land on an empty brief.
           if (!itemByTeam.has(key)) return;
           view = 'teams';
           selectTeam(key);
