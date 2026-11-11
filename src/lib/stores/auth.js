@@ -1,4 +1,4 @@
-import { followProfileTheme, setTheme, theme } from '$lib/stores/theme.js';
+import { clearThemeChoice, followProfileTheme, markThemeChosen, setTheme, theme } from '$lib/stores/theme.js';
 import { team } from '$lib/stores/team.js';
 import { get, writable } from 'svelte/store';
 import { supabase } from '$lib/app/supabase.js';
@@ -239,10 +239,22 @@ export async function signOut({ confirmUnsynced = true, force = false, confirmIm
 // Back-compat alias for existing code that reads from "userStore"
 export const userStore = userProfile;
 
+/** Drops the person's own theme choice, so the team default from Team settings applies to them again. */
+export async function useTeamDefaultTheme(teamDefaultTheme) {
+  clearThemeChoice();
+  followProfileTheme(null, teamDefaultTheme);
+  const id = get(userProfile)?.id;
+  if (!id) return;
+  userProfile.update((profile) => (profile ? { ...profile, theme_preference: null } : profile));
+  const { error } = await supabase.from('user_profiles').update({ theme_preference: null }).eq('id', id);
+  if (error) console.warn('theme preference not cleared:', error.message || error);
+}
+
 /** Switches between light and dark and saves it on the account, so the person's other devices follow. */
 export async function toggleAccountTheme() {
   const next = get(theme) === 'modern-dark' ? 'modern' : 'modern-dark';
   setTheme(next);
+  markThemeChosen();
   const id = get(userProfile)?.id;
   if (!id) return;
   const { error } = await supabase.from('user_profiles').update({ theme_preference: next }).eq('id', id);
