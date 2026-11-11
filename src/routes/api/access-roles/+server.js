@@ -23,7 +23,7 @@ const ROLE_COLUMNS = 'id, name, description, permissions, created_at, updated_at
 const fail = (error, status = 400) => json({ error }, { status, headers: NO_STORE });
 const isMissingTable = (error) =>
   /access_roles|access_role_id/.test(error?.message || '') && /exist/.test(error?.message || '');
-const MISSING = 'Roles need the 20260106000000_access_roles.sql migration on the database.';
+const MISSING = 'Roles need the current database schema (supabase/migrations) applied.';
 
 function actorScope(access) {
   const user = { ...access.profile, roster_keys: access.rosterKeys };

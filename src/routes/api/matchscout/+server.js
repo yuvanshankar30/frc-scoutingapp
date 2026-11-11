@@ -247,7 +247,7 @@ export async function POST({ request }) {
         .select('*')
         .single();
     let { data, error } = await save(value);
-    // Until the robot_present migration (20261024000000) reaches a database, save without the column so no report
+    // On a database built from an older schema, save without the column so no report
     // is lost, keeping a no-show readable in the notes.
     if (error && /robot_present/.test(error.message || '')) {
       const { robot_present: robotPresent, ...withoutPresent } = value;
@@ -255,7 +255,7 @@ export async function POST({ request }) {
         withoutPresent.post_notes = ['Robot did not show up.', withoutPresent.post_notes].filter(Boolean).join(' ');
       ({ data, error } = await save(withoutPresent));
     }
-    // Same for the detail columns (20260104000000_match_report_detail_fields): the report saves without them rather than not at all.
+    // Same for the detail columns: the report saves without them rather than not at all.
     if (error && /\b(defense|bps|robot_status_shifts|foul_nature|foul_details)\b/.test(error.message || '')) {
       const { defense, bps, robot_status_shifts, foul_nature, foul_details, ...withoutNew } = value;
       ({ data, error } = await save(withoutNew));

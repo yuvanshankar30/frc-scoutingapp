@@ -1,7 +1,8 @@
 # Database
 
 The schema is SQL in `supabase/migrations/`, applied in filename order (`npx supabase db push`, or paste it into the
-Supabase SQL editor). `20260101000000_initial_schema.sql` creates everything; later changes go in new files. Row-level
+Supabase SQL editor). `20260101000000_schema.sql` creates every table, function and trigger, and `20260101000001_security.sql` adds
+row-level security, policies and grants. Run them in that order; later changes go in new files. Row-level
 security decides what each signed-in person can read; see [architecture overview](overview.md#access-model) and
 [security](../security/README.md).
 

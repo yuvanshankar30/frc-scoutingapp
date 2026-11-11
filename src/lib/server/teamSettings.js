@@ -33,7 +33,7 @@ export async function loadTeamSettings({ fresh = false, db = null } = {}) {
     const read = (columns) =>
       withTimeout(client.from('app_settings').select(columns).eq('id', 1).maybeSingle(), READ_TIMEOUT_MS, TIMED_OUT);
     let { data, error } = await read(SETTINGS_COLUMNS);
-    // A database without the appearance migration (20260105000000_team_appearance.sql) still loads, with the
+    // A database without the appearance column (an older copy of the schema) still loads, with the
     // default look, instead of stopping every page.
     if (error && /appearance/.test(error.message || '')) ({ data, error } = await read(LEGACY_COLUMNS));
     if (error) result = { settings: null, error: error.message || 'Could not read app_settings' };

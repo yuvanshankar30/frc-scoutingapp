@@ -156,7 +156,7 @@ export async function POST({ request }) {
       .single();
     if (error && isMissingColumn(error))
       return json(
-        { error: 'Linking TBA events needs the 20261014000000_scouting_event_tba_link migration.' },
+        { error: 'Linking TBA events needs the current database schema (supabase/migrations) applied.' },
         { status: 503 }
       );
     if (error) throw error;
