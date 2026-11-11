@@ -13,7 +13,6 @@
     Vote
   } from 'lucide-svelte';
   import TeamPicker from '$lib/components/common/TeamPicker.svelte';
-  import { isPhone } from '$lib/stores/device.js';
   import RobotStarPlot from '$lib/components/scouting/RobotStarPlot.svelte';
   import MatchScoutReport from '$lib/components/scouting/MatchScoutReport.svelte';
   import { fetchActiveScoutingEventKey } from '$lib/scouting/scoutingEvent.js';

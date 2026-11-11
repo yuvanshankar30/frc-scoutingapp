@@ -30,12 +30,7 @@
   import { isPhone } from '$lib/stores/device.js';
   import LineChart from '$lib/components/charts/LineChart.svelte';
   import CountBars from '$lib/components/charts/CountBars.svelte';
-  import {
-    disagreementsPerScout,
-    reportKindMix,
-    reportsPerScout,
-    robotsReportedPerMatch
-  } from '$lib/scouting/adminCharts.js';
+  import { reportKindMix, robotsReportedPerMatch } from '$lib/scouting/adminCharts.js';
   import BottomSheet from '$lib/components/common/BottomSheet.svelte';
   import {
     CalendarClock,
@@ -170,7 +165,6 @@
   };
 
   let users = [];
-  let missedMatches = [];
   let matchReports = [];
   let userSearch = '';
   let roleFilter = 'all';
@@ -458,7 +452,6 @@
         users.map((row) => [row.id, row.full_name && !row.full_name.includes('@') ? row.full_name : ''])
       );
       loadStartPhotos().catch((error) => (photoStatus = error.message));
-      missedMatches = data.data?.missed_matches || [];
       matchReports = data.data?.match_reports || [];
       googleSheetId = data.data?.google_sheet_id || '';
       googleSheetIdInput = googleSheetId;
@@ -936,7 +929,6 @@
           {/each}
         </nav>
         <div class="admin-bar-end">
-          <span class="admin-event" title="Active competition code">{displayEventCode(eventKey) || 'No event'}</span>
           <button
             class="admin-refresh"
             type="button"
@@ -1471,79 +1463,23 @@
     {:else if section === 'team'}
       <TeamSettingsPanel />
     {:else}
-      <div class="stats-grid">
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Pit Scouted</div>
-            <div class="stat-value">{metrics.pit.percent}%</div>
-            <div class="stat-sub">
-              {metrics.pit.completed_teams ?? metrics.pit.scouted_teams}/{metrics.pit.total_teams} teams - Pending {metrics
-                .pit.pending_teams ?? 0}, Needs photo {metrics.pit.needs_photo_teams ?? 0}
-            </div>
+      <!-- The event at a glance: how much is covered, not who did what. -->
+      <section class="ov-tiles" aria-label="Event coverage">
+        {#each [{ label: 'Matches scouted', percent: metrics.data.scouted_percent, detail: `${metrics.data.scouted_matches} of ${metrics.data.total_matches} matches have reports` }, { label: 'Pit scouted', percent: metrics.pit.percent, detail: `${metrics.pit.completed_teams ?? metrics.pit.scouted_teams} of ${metrics.pit.total_teams} teams` }, { label: 'Assignments set', percent: metrics.data.assigned_percent, detail: `${metrics.data.assigned_matches} of ${metrics.data.total_matches} matches have scouts` }] as tile (tile.label)}
+          <div class="ov-tile">
+            <span class="ov-label">{tile.label}</span>
+            <b class="ov-value">{tile.percent ?? 0}%</b>
+            <div class="ov-bar" aria-hidden="true"><i style:width={`${Math.min(100, tile.percent ?? 0)}%`}></i></div>
+            <small>{tile.detail}</small>
           </div>
+        {/each}
+        <div class="ov-tile">
+          <span class="ov-label">Match reports</span>
+          <b class="ov-value">{metrics.match?.reports || 0}</b>
+          <small>{metrics.match?.matches || 0} matches · {metrics.match?.teams || 0} teams</small>
         </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Match Assigned</div>
-            <div class="stat-value">{metrics.data.assigned_percent}%</div>
-            <div class="stat-sub">{metrics.data.assigned_matches}/{metrics.data.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Note Assigned</div>
-            <div class="stat-value">{metrics.note.assigned_percent}%</div>
-            <div class="stat-sub">{metrics.note.assigned_matches}/{metrics.note.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Quick Assigned</div>
-            <div class="stat-value">{metrics.quick.assigned_percent}%</div>
-            <div class="stat-sub">{metrics.quick.assigned_matches}/{metrics.quick.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Match Scouted</div>
-            <div class="stat-value">{metrics.data.scouted_percent}%</div>
-            <div class="stat-sub">{metrics.data.scouted_matches}/{metrics.data.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Note Scouted</div>
-            <div class="stat-value">{metrics.note.scouted_percent}%</div>
-            <div class="stat-sub">{metrics.note.scouted_matches}/{metrics.note.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Quick Scouted</div>
-            <div class="stat-value">{metrics.quick.scouted_percent}%</div>
-            <div class="stat-sub">{metrics.quick.scouted_matches}/{metrics.quick.total_matches} matches</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Match Reports</div>
-            <div class="stat-value">{metrics.match?.reports || 0}</div>
-            <div class="stat-sub">{metrics.match?.matches || 0} matches / {metrics.match?.teams || 0} teams</div>
-          </div>
-        </div>
-        <div class="card stat-card">
-          <div class="stat-content">
-            <div class="stat-label">Missed Shifts</div>
-            <div class="stat-value">{metrics.overall.missed_shift_percent}%</div>
-            <div class="stat-sub">
-              Data {metrics.data.missed_shifts} / Note {metrics.note.missed_shifts} / Quick {metrics.quick
-                .missed_shifts}
-            </div>
-          </div>
-        </div>
-      </div>
+      </section>
 
-      <!-- Scouting at a glance: same charts on desktop (two columns) and phones (one). -->
       <section class="admin-charts" aria-label="Scouting charts">
         <figure class="card chart-card wide">
           <h3>Robots reported per match</h3>
@@ -1551,73 +1487,15 @@
             ariaLabel="Robots with a report in each match, out of six"
             max={6}
             digits={0}
-            series={[
-              { name: 'Robots reported', color: 'var(--chart-blue)', points: robotsReportedPerMatch(matchReports) }
-            ]}
+            series={[{ name: 'Robots reported', color: 'var(--accent)', points: robotsReportedPerMatch(matchReports) }]}
             reference={{ value: 6, label: 'All six' }}
           />
         </figure>
         <figure class="card chart-card">
-          <h3>Reports per scout</h3>
-          <CountBars rows={reportsPerScout(matchReports).slice(0, 12)} emptyText="No match reports yet." />
-        </figure>
-        <figure class="card chart-card">
           <h3>Report kinds</h3>
-          <CountBars rows={reportKindMix(matchReports)} color="var(--chart-orange)" emptyText="No match reports yet." />
-          <h3 class="chart-sub">Strong disagreements</h3>
-          <p class="chart-note">Reports whose ball count is far from another scout's on the same robot and match.</p>
-          <CountBars
-            rows={disagreementsPerScout(matchReports)}
-            color="var(--chart-danger)"
-            emptyText="No strong disagreements."
-          />
+          <CountBars rows={reportKindMix(matchReports)} color="var(--accent)" emptyText="No match reports yet." />
         </figure>
       </section>
-
-      <div class="card section-card">
-        <div class="section-header">
-          <h3>Missed Matches</h3>
-        </div>
-        {#if !missedMatches.length}
-          <div class="empty-state compact-empty">No missed matches detected yet.</div>
-        {:else}
-          <div class="table-wrap">
-            <div class="table-container">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Match</th>
-                    <th>Data Misses</th>
-                    <th>Note Misses</th>
-                    <th>Quick Misses</th>
-                    <th>Missed Assignments</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each missedMatches as m}
-                    <tr>
-                      <td data-label="Match">#{m.match_number}</td>
-                      <td data-label="Data Misses">{m.data_missed_count}</td>
-                      <td data-label="Note Misses">{m.note_missed_count}</td>
-                      <td data-label="Quick Misses">{m.quick_missed_count}</td>
-                      <td data-label="Missed Assignments">
-                        <div class="missed-list">
-                          {#each m.missed_assignments as a}
-                            <div>
-                              {a.scouting_type} - {String(a.team_key || '').replace(/^frc/i, '')} - {a.user_name ||
-                                a.assigned_user}
-                            </div>
-                          {/each}
-                        </div>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        {/if}
-      </div>
     {/if}
 
     <slot />
@@ -1625,6 +1503,52 @@
 {/if}
 
 <style>
+  .ov-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--space-3);
+  }
+  .ov-tile {
+    display: grid;
+    gap: var(--space-2);
+    align-content: start;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+  }
+  .ov-label {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .ov-value {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-strong, var(--text));
+    font-variant-numeric: tabular-nums;
+  }
+  .ov-bar {
+    height: 0.35rem;
+    border-radius: var(--radius-full);
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+  .ov-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+  }
+  .ov-tile small {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
   .sp-link {
     display: grid;
     gap: var(--space-2);
@@ -1903,39 +1827,6 @@
     .table-container {
       overflow-x: visible;
     }
-    .table thead {
-      display: none;
-    }
-    .table,
-    .table tbody,
-    .table tr,
-    .table td {
-      display: block;
-      width: 100%;
-    }
-    .table tr {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      margin-bottom: var(--space-3);
-      padding: var(--space-2) var(--space-3);
-    }
-    .table td {
-      border: 0;
-      border-bottom: 1px solid var(--border);
-      padding: var(--space-2) 0;
-    }
-    .table td:last-child {
-      border-bottom: 0;
-    }
-    .table td::before {
-      content: attr(data-label);
-      display: block;
-      color: var(--text-muted);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 2px;
-    }
   }
 
   .data-browser {
@@ -1981,15 +1872,6 @@
     align-items: center;
     gap: var(--space-2);
     flex: none;
-  }
-  .admin-event {
-    padding: 0.2rem 0.7rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
   .admin-refresh {
     display: inline-grid;
@@ -2656,9 +2538,6 @@
     margin: 0;
     font-size: 1rem;
   }
-  .chart-card .chart-sub {
-    margin-top: var(--space-3);
-  }
   .chart-note {
     margin: 0;
     color: var(--text-muted);
@@ -2669,22 +2548,6 @@
       grid-template-columns: 1fr;
       gap: var(--space-3);
       margin: var(--space-3) 0;
-    }
-    .stats-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-    }
-    .stats-grid .stat-card {
-      padding: 8px;
-    }
-    .stats-grid .stat-label {
-      font-size: 0.75rem;
-    }
-    .stats-grid .stat-value {
-      font-size: 1.3rem;
-    }
-    .stats-grid .stat-sub {
-      display: none;
     }
   }
 </style>

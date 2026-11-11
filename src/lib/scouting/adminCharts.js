@@ -1,5 +1,5 @@
-// Numbers behind the Scouting Admin overview charts. Pure, so they can be tested.
-import { findDisputes, scoutOf } from '$lib/scouting/scoutData.js';
+// Numbers behind the Scouting Admin overview charts: event-wide coverage, never per-scout tracking. Pure, so they can
+// be tested.
 import { reportKindOf, REPORT_KIND_LABELS } from '$lib/scouting/reportKinds.js';
 import { canonicalScoutMatchSuffix } from '$lib/scouting/scoutAssignmentCompletion.js';
 import { compareMatchKeys, shortMatchLabel } from '$lib/matches/matchKeys.js';
@@ -18,18 +18,6 @@ export function robotsReportedPerMatch(reports) {
     .map(({ matchKey, teams }) => ({ matchKey, label: shortMatchLabel(matchKey), value: Math.min(6, teams.size) }));
 }
 
-/** Reports filed by each scout, most first. */
-export function reportsPerScout(reports) {
-  const counts = new Map();
-  for (const report of reports || []) {
-    const name = scoutOf(report);
-    counts.set(name, (counts.get(name) || 0) + 1);
-  }
-  return [...counts]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-}
-
 /** How many reports of each kind (Data / Performance / Robot). */
 export function reportKindMix(reports) {
   const counts = { data: 0, performance: 0, robot: 0 };
@@ -37,21 +25,4 @@ export function reportKindMix(reports) {
   return Object.entries(counts)
     .filter(([, count]) => count > 0)
     .map(([kind, count]) => ({ label: REPORT_KIND_LABELS[kind], count }));
-}
-
-/**
- * Scouts whose ball counts disagree strongly with another scout on the same robot and match
- * (findDisputes), as a count per scout, most first.
- */
-export function disagreementsPerScout(reports) {
-  const disputes = findDisputes(reports || []);
-  const counts = new Map();
-  for (const report of reports || []) {
-    if (!disputes.has(report.id)) continue;
-    const name = scoutOf(report);
-    counts.set(name, (counts.get(name) || 0) + 1);
-  }
-  return [...counts]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
