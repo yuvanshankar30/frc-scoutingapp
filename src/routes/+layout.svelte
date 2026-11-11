@@ -204,6 +204,7 @@
   }
 
   $: pathname = $page.url.pathname;
+  $: designFrame = $page.url.searchParams.get('design') === '1';
   // The page that shows no site chrome and needs no sign-in: the login form.
   $: isLogin = pathname === '/login';
   $: canAdmin = canAdministerScouting($userProfile);
@@ -298,6 +299,9 @@
   <slot />
 {:else if !$authReady || !$user}
   <div class="boot" role="status">Loading {appName}...</div>
+{:else if designFrame}
+  <!-- Inside the form designer (Scouting Admin > Edit): just the page, as a scout sees it, without the menu. -->
+  <main class="design-frame"><slot /></main>
 {:else}
   <div class="shell" class:collapsed>
     <aside class="rail" aria-label="Main navigation">
@@ -467,6 +471,11 @@
 {#if $user && !isLogin}<SiteSearch bind:open={searchOpen} pages={searchPages} />{/if}
 
 <style>
+  .design-frame {
+    min-height: calc(100 * var(--vh));
+    padding: var(--space-4);
+    background: var(--background);
+  }
   .set-team {
     display: block;
     padding: var(--space-2) var(--space-4);

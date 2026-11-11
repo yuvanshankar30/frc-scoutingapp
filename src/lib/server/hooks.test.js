@@ -101,4 +101,14 @@ describe('API cache headers', () => {
     });
     expect(publicData.headers.get('cache-control')).toBe('public, max-age=60');
   });
+
+  it('lets only this site frame the form designer preview', async () => {
+    const { framingHeaders } = await import('../../hooks.server.js');
+    expect(framingHeaders(new URL('http://x/matchscout?design=1'))).toEqual({
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Content-Security-Policy': "frame-ancestors 'self'"
+    });
+    expect(framingHeaders(new URL('http://x/matchscout'))).toEqual({});
+    expect(framingHeaders(new URL('http://x/scouting-admin?design=1'))).toEqual({});
+  });
 });

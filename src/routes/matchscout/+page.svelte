@@ -13,7 +13,7 @@
     shownOnKind
   } from '$lib/scouting/forms/formSchema.js';
   import Select from '$lib/components/common/Select.svelte';
-  import { onDestroy, onMount } from 'svelte';
+  import { afterUpdate, onDestroy, onMount } from 'svelte';
   import { holdScreenAwake } from '$lib/ui/wakeLock.js';
   import { isPhone } from '$lib/stores/device.js';
   import { scoutIdentity } from '$lib/scouting/scoutIdentity.js';
@@ -379,6 +379,86 @@
     foulDetails = '';
     selectPhase('prematch');
   }
+
+  // Design mode (/matchscout?design=1, inside Scouting Admin > Edit): this page is the form designer's canvas, so the
+  // admin edits exactly what a scout sees. The designer sends the draft form; clicking a question selects it there,
+  // and questions (or question types from the designer's palette) are dragged around right here.
+  let designMode = false;
+  let designSelected = null;
+  const toDesigner = (message) => window.parent?.postMessage(message, window.location.origin);
+  function onDesignMessage(event) {
+    if (event.origin !== window.location.origin || event.source !== window.parent) return;
+    const data = event.data || {};
+    if (data.type !== 'form-design') return;
+    customForm = { version: data.version || 0, schema: data.schema };
+    designSelected = data.selectedId || null;
+    if (data.kind && data.kind !== reportKind) {
+      reportKind = data.kind;
+      clearAnswers();
+    }
+    if (data.phase && kindPhases.includes(data.phase)) selectPhase(data.phase);
+  }
+  const designTarget = (event) => event.target?.closest?.('[data-design-id]');
+  function designClick(event) {
+    if (!designMode) return;
+    const target = designTarget(event);
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toDesigner({ type: 'design-select', id: target.dataset.designId });
+  }
+  function designDragStart(event) {
+    const target = designTarget(event);
+    if (!designMode || !target) return;
+    event.dataTransfer.setData('text/plain', `design-move:${target.dataset.designId}`);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+  let designOver = null;
+  function designDragOver(event) {
+    if (!designMode) return;
+    event.preventDefault();
+    const target = designTarget(event);
+    designOver = target?.dataset.designId || null;
+  }
+  function designDrop(event) {
+    if (!designMode) return;
+    event.preventDefault();
+    const raw = event.dataTransfer.getData('text/plain') || '';
+    const beforeId = designTarget(event)?.dataset.designId || null;
+    designOver = null;
+    if (raw.startsWith('design-move:')) {
+      const id = raw.slice('design-move:'.length);
+      if (id !== beforeId) toDesigner({ type: 'design-move', id, beforeId, section: phase });
+    } else if (raw.startsWith('design-new:'))
+      toDesigner({ type: 'design-add', questionType: raw.slice('design-new:'.length), beforeId, section: phase });
+  }
+  // Marks the selected and drop-target cards, and lets every question be dragged.
+  function paintDesign() {
+    if (!designMode) return;
+    for (const element of document.querySelectorAll('[data-design-id]')) {
+      element.setAttribute('draggable', 'true');
+      element.classList.toggle('design-selected', element.dataset.designId === designSelected);
+      element.classList.toggle('design-over', element.dataset.designId === designOver);
+    }
+  }
+  afterUpdate(paintDesign);
+  function startDesignMode() {
+    window.addEventListener('message', onDesignMessage);
+    window.addEventListener('click', designClick, true);
+    window.addEventListener('dragstart', designDragStart, true);
+    window.addEventListener('dragover', designDragOver, true);
+    window.addEventListener('drop', designDrop, true);
+    toDesigner({ type: 'design-ready', form: 'match' });
+  }
+  onDestroy(() => {
+    if (!designMode) return;
+    window.removeEventListener('message', onDesignMessage);
+    window.removeEventListener('click', designClick, true);
+    window.removeEventListener('dragstart', designDragStart, true);
+    window.removeEventListener('dragover', designDragOver, true);
+    window.removeEventListener('drop', designDrop, true);
+  });
+  $: if (designMode) toDesigner({ type: 'design-view', phase, kind: reportKind });
 
   function switchKind(kind) {
     if (kind === reportKind || saving) return;
@@ -966,9 +1046,12 @@
     } catch {
       /* storage can be unavailable */
     }
-    void fetchLiveForm('match').then((live) => {
-      customForm = live;
-    });
+    designMode = new URLSearchParams(window.location.search).get('design') === '1';
+    if (designMode) startDesignMode();
+    else
+      void fetchLiveForm('match').then((live) => {
+        customForm = live;
+      });
     try {
       const response = await fetch('/api/matchscout?resource=start-photos', { headers: await getAuthHeader() });
       const payload = await response.json();
@@ -999,7 +1082,7 @@
 
 <svelte:head><title>Match Scouting</title></svelte:head>
 
-<main class="match-scouting-page">
+<main class="match-scouting-page" class:design-mode={designMode}>
   {#if $isPhone}
     <!-- Phone: who is scouting and what, at a glance; the competition and past reports fold away. -->
     <header class="ph-scout">
@@ -1159,7 +1242,9 @@
   <div class="scouting-shell">
     <aside class="stage-nav" aria-label={`${REPORT_KIND_LABELS[reportKind]} stages`}>
       {#each kindPhases as id, index (id)}
-        <button class:active={phase === id} on:click={() => (id === 'auto' ? openAutoPhase() : selectPhase(id))}
+        <button
+          class:active={phase === id}
+          on:click={() => (id === 'auto' && !designMode ? openAutoPhase() : selectPhase(id))}
           ><svelte:component this={PHASE_INFO[id].icon} size={18} /><span
             >{$isPhone ? PHASE_SHORT[id] : PHASE_INFO[id].label}</span
           ><small>{String(index + 1).padStart(2, '0')}</small></button
@@ -1258,7 +1343,7 @@
           <MapPinned size={20} />
         </div>
         <div class="blocks prematch-blocks">
-          <div class="blk assignment-blk" style={blockStyle('prematch.assignment', orders, layout)}>
+          <div class="blk assignment-blk" data-design-id="core:prematch.assignment" style={blockStyle('prematch.assignment', orders, layout)}>
             <div class="assignment-grid">
               <label
                 >Scout name (required)<input
@@ -1311,7 +1396,7 @@
               </fieldset>
             </div>
           </div>
-          <div class="blk" style={blockStyle('prematch.present', orders, layout)}>
+          <div class="blk" data-design-id="core:prematch.present" style={blockStyle('prematch.present', orders, layout)}>
             <fieldset class="control-group present-card">
               <legend>Did the robot show up to the field?</legend>
               <div class="segmented present-choice">
@@ -1324,7 +1409,7 @@
             </fieldset>
           </div>
           {#if reportKind === 'data'}
-            <div class="blk" style={blockStyle('prematch.preload', orders, layout)}>
+            <div class="blk" data-design-id="core:prematch.preload" style={blockStyle('prematch.preload', orders, layout)}>
               <fieldset class="control-group preload-card">
                 <legend>{layout.label('prematch.preload', 'Preload')} (required)</legend>
                 <div class="segmented preload-choice">
@@ -1335,7 +1420,7 @@
                 </div>
               </fieldset>
             </div>
-            <div class="blk" style={blockStyle('prematch.start', orders, layout)}>
+            <div class="blk" data-design-id="core:prematch.start" style={blockStyle('prematch.start', orders, layout)}>
               <div class="start-position-block">
                 <div class="start-position-head">
                   <span class="field-label">{layout.label('prematch.start', 'Starting position')}</span>
@@ -1436,7 +1521,7 @@
         <div class="auto-layout">
           <div class="auto-controls blocks packed">
             {#if !layout.hidden('auto.ran')}
-              <div class="blk" style={blockStyle('auto.ran', orders, layout)}>
+              <div class="blk" data-design-id="core:auto.ran" style={blockStyle('auto.ran', orders, layout)}>
                 <div class="control-group">
                   <span class="field-label">{layout.label('auto.ran', 'Did autonomous run?')}</span>
                   <div class="segmented">
@@ -1449,7 +1534,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.points')}
-              <div class="blk tall" style={blockStyle('auto.points', orders, layout)}>
+              <div class="blk tall" data-design-id="core:auto.points" style={blockStyle('auto.points', orders, layout)}>
                 <div class="control-group auto-points-control">
                   <label for="auto-points-estimate" class="field-label"
                     >{layout.label('auto.points', 'Estimated points scored')}</label
@@ -1499,7 +1584,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.sources')}
-              <div class="blk tall" style={blockStyle('auto.sources', orders, layout)}>
+              <div class="blk tall" data-design-id="core:auto.sources" style={blockStyle('auto.sources', orders, layout)}>
                 <fieldset class="control-group">
                   <legend class="field-label"
                     >{layout.label('auto.sources', 'Where did the robot collect fuel?')}</legend
@@ -1517,7 +1602,7 @@
               </div>
             {/if}
             {#if !layout.hidden('auto.cycles')}
-              <div class="blk" style={blockStyle('auto.cycles', orders, layout)}>
+              <div class="blk" data-design-id="core:auto.cycles" style={blockStyle('auto.cycles', orders, layout)}>
                 <label class="control-group"
                   >{layout.label('auto.cycles', 'Autonomous cycles')}<input
                     class="form-input"
@@ -1551,7 +1636,7 @@
           <Timer size={20} />
         </div>
         <div class="blocks packed">
-          <div class="blk" style={blockStyle('teleop.roles', orders, layout)}>
+          <div class="blk" data-design-id="core:teleop.roles" style={blockStyle('teleop.roles', orders, layout)}>
             <section class="t-card" aria-labelledby="t-roles">
               <header class="t-head">
                 <h3 id="t-roles">{layout.label('teleop.roles', 'Observed roles')}</h3>
@@ -1582,7 +1667,7 @@
           </div>
 
           {#if playedDefense}
-            <div class="blk wide" style={blockStyle('teleop.defense', orders, layout)}>
+            <div class="blk wide" data-design-id="core:teleop.defense" style={blockStyle('teleop.defense', orders, layout)}>
               <section class="t-card defense-card" class:ph={$isPhone} aria-labelledby="t-defense">
                 <header class="t-head">
                   <h3 id="t-defense">{layout.label('teleop.defense', 'Defense details')}</h3>
@@ -1673,7 +1758,7 @@
             </div>
           {/if}
 
-          <div class="blk" style={blockStyle('teleop.balls', orders, layout)}>
+          <div class="blk" data-design-id="core:teleop.balls" style={blockStyle('teleop.balls', orders, layout)}>
             <section class="t-card balls-control">
               <header class="t-head">
                 <label for="balls-scored" class="t-title">{layout.label('teleop.balls', 'Balls scored')}</label><span
@@ -1709,7 +1794,7 @@
           </div>
 
           {#if !layout.hidden('teleop.notes') || playedDefense}
-            <div class="blk" style={blockStyle('teleop.notes', orders, layout)}>
+            <div class="blk" data-design-id="core:teleop.notes" style={blockStyle('teleop.notes', orders, layout)}>
               <label class="notes-label scouter-notes"
                 ><span class="t-head"
                   ><span class="t-title">{layout.label('teleop.notes', 'Real-scout observations')}</span
@@ -1752,7 +1837,7 @@
         </div>
         <div class="blocks packed">
           {#if !layout.hidden('shuttling.shuttled')}
-            <div class="blk" style={blockStyle('shuttling.shuttled', orders, layout)}>
+            <div class="blk" data-design-id="core:shuttling.shuttled" style={blockStyle('shuttling.shuttled', orders, layout)}>
               <div class="t-card control-group" role="group" aria-labelledby="s-shuttled">
                 <header class="t-head">
                   <span id="s-shuttled" class="t-title"
@@ -1779,7 +1864,7 @@
           {/if}
           {#if shuttled}
             {#if !layout.hidden('shuttling.amount')}
-              <div class="blk" style={blockStyle('shuttling.amount', orders, layout)}>
+              <div class="blk" data-design-id="core:shuttling.amount" style={blockStyle('shuttling.amount', orders, layout)}>
                 <section class="t-card balls-control">
                   <header class="t-head">
                     <label for="shuttle-band" class="t-title">{layout.label('shuttling.amount', 'Fuel shuttled')}</label
@@ -1801,7 +1886,7 @@
               </div>
             {/if}
             {#if !layout.hidden('shuttling.rating')}
-              <div class="blk" style={blockStyle('shuttling.rating', orders, layout)}>
+              <div class="blk" data-design-id="core:shuttling.rating" style={blockStyle('shuttling.rating', orders, layout)}>
                 <section class="t-card">
                   <header class="t-head">
                     <h3>{layout.label('shuttling.rating', 'Shuttling effectiveness')}</h3>
@@ -1827,7 +1912,7 @@
               </div>
             {/if}
             {#if !layout.hidden('shuttling.notes')}
-              <div class="blk" style={blockStyle('shuttling.notes', orders, layout)}>
+              <div class="blk" data-design-id="core:shuttling.notes" style={blockStyle('shuttling.notes', orders, layout)}>
                 <label class="notes-label"
                   >{layout.label('shuttling.notes', 'Shuttling notes')} (optional)<textarea
                     class="form-input"
@@ -1862,7 +1947,7 @@
           <Gauge size={20} />
         </div>
         <div class="blocks">
-          <div class="blk" style={blockStyle('teleop.ratings', orders, layout)}>
+          <div class="blk" data-design-id="core:teleop.ratings" style={blockStyle('teleop.ratings', orders, layout)}>
             <section class="t-card">
               <header class="t-head">
                 <h3>{layout.label('teleop.ratings', 'Shot accuracy')}</h3>
@@ -1884,7 +1969,7 @@
             </section>
           </div>
 
-          <div class="blk" style={blockStyle('performance.bps', orders, layout)}>
+          <div class="blk" data-design-id="core:performance.bps" style={blockStyle('performance.bps', orders, layout)}>
             <section class="t-card">
               <header class="t-head">
                 <label for="bps-slider" class="t-title">Balls per second</label>
@@ -1932,7 +2017,7 @@
           </div>
 
           {#if !layout.hidden('teleop.intake')}
-            <div class="blk" style={blockStyle('teleop.intake', orders, layout)}>
+            <div class="blk" data-design-id="core:teleop.intake" style={blockStyle('teleop.intake', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('teleop.intake', 'Intake speed')}</h3>
@@ -1954,7 +2039,7 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.driver')}
-            <div class="blk" style={blockStyle('performance.driver', orders, layout)}>
+            <div class="blk" data-design-id="core:performance.driver" style={blockStyle('performance.driver', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('performance.driver', 'Driver skill')}</h3>
@@ -1980,7 +2065,7 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.ranking')}
-            <div class="blk" style={blockStyle('performance.ranking', orders, layout)}>
+            <div class="blk" data-design-id="core:performance.ranking" style={blockStyle('performance.ranking', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('performance.ranking', 'Power ranking')}</h3>
@@ -2002,7 +2087,7 @@
             </div>
           {/if}
           {#if !layout.hidden('performance.notes')}
-            <div class="blk" style={blockStyle('performance.notes', orders, layout)}>
+            <div class="blk" data-design-id="core:performance.notes" style={blockStyle('performance.notes', orders, layout)}>
               <label class="notes-label"
                 >{layout.label('performance.notes', 'Notes about performance')} (required)<textarea
                   class="form-input"
@@ -2032,7 +2117,7 @@
           <Wrench size={20} />
         </div>
         <div class="blocks">
-          <div class="blk" style={blockStyle('teleop.status', orders, layout)}>
+          <div class="blk" data-design-id="core:teleop.status" style={blockStyle('teleop.status', orders, layout)}>
             <div class="t-card control-group" role="group" aria-labelledby="t-status">
               <header class="t-head">
                 <span id="t-status" class="t-title">{layout.label('teleop.status', 'Robot status')}</span><span
@@ -2085,7 +2170,7 @@
               {/if}
             </div>
           </div>
-          <div class="blk" style={blockStyle('teleop.crash', orders, layout)}>
+          <div class="blk" data-design-id="core:teleop.crash" style={blockStyle('teleop.crash', orders, layout)}>
             <div class="t-card control-group" role="group" aria-labelledby="t-crash">
               <header class="t-head">
                 <span id="t-crash" class="t-title">{layout.label('teleop.crash', 'Significant crash')}</span><span
@@ -2124,7 +2209,7 @@
             </div>
           </div>
           {#if !layout.hidden('auto.collision')}
-            <div class="blk" style={blockStyle('auto.collision', orders, layout)}>
+            <div class="blk" data-design-id="core:auto.collision" style={blockStyle('auto.collision', orders, layout)}>
               <div class="t-card control-group" role="group" aria-labelledby="r-collision">
                 <header class="t-head">
                   <span id="r-collision" class="t-title"
@@ -2156,7 +2241,7 @@
             </div>
           {/if}
           {#if !layout.hidden('robot.intakeJammed')}
-            <div class="blk" style={blockStyle('robot.intakeJammed', orders, layout)}>
+            <div class="blk" data-design-id="core:robot.intakeJammed" style={blockStyle('robot.intakeJammed', orders, layout)}>
               <label class="incident-toggle"
                 ><input type="checkbox" bind:checked={intakeJammed} /><span
                   ><AlertTriangle size={17} />
@@ -2166,7 +2251,7 @@
             </div>
           {/if}
           {#if !layout.hidden('postmatch.cards')}
-            <div class="blk" style={blockStyle('postmatch.cards', orders, layout)}>
+            <div class="blk" data-design-id="core:postmatch.cards" style={blockStyle('postmatch.cards', orders, layout)}>
               <div class="post-grid outcome-panel">
                 <fieldset>
                   <legend>{layout.label('postmatch.cards', 'Cards')}</legend>
@@ -2188,7 +2273,7 @@
             </div>
           {/if}
           {#if !layout.hidden('robot.fouls')}
-            <div class="blk" style={blockStyle('robot.fouls', orders, layout)}>
+            <div class="blk" data-design-id="core:robot.fouls" style={blockStyle('robot.fouls', orders, layout)}>
               <section class="t-card">
                 <header class="t-head">
                   <h3>{layout.label('robot.fouls', 'Fouls')}</h3>
@@ -2255,7 +2340,7 @@
               </section>
             </div>
           {/if}
-          <div class="blk" style={blockStyle('postmatch.break', orders, layout)}>
+          <div class="blk" data-design-id="core:postmatch.break" style={blockStyle('postmatch.break', orders, layout)}>
             <div class="post-grid outcome-panel">
               <fieldset>
                 <legend>{layout.label('postmatch.break', 'Mechanical break')} (required)</legend>
@@ -2269,7 +2354,7 @@
             </div>
           </div>
           {#if !layout.hidden('robot.breaks') || mechanicalBreak === true}
-            <div class="blk" style={blockStyle('robot.breaks', orders, layout)}>
+            <div class="blk" data-design-id="core:robot.breaks" style={blockStyle('robot.breaks', orders, layout)}>
               <section
                 class="t-card breaks-card"
                 class:emphasis={mechanicalBreak === true ||
@@ -2315,7 +2400,7 @@
             </div>
           {/if}
           {#if !layout.hidden('postmatch.beached')}
-            <div class="blk" style={blockStyle('postmatch.beached', orders, layout)}>
+            <div class="blk" data-design-id="core:postmatch.beached" style={blockStyle('postmatch.beached', orders, layout)}>
               <label class="incident-toggle"
                 ><input type="checkbox" bind:checked={beached} /><span
                   ><AlertTriangle size={17} /> {layout.label('postmatch.beached', 'Robot became beached')}</span
@@ -2323,7 +2408,7 @@
               >
             </div>
           {/if}
-          <div class="blk" style={blockStyle('postmatch.problem', orders, layout)}>
+          <div class="blk" data-design-id="core:postmatch.problem" style={blockStyle('postmatch.problem', orders, layout)}>
             {#if requiresPitReport}
               <div class="required-handoff">
                 <AlertTriangle size={17} /><span
@@ -2370,7 +2455,7 @@
         </div>
         <div class="blocks packed">
           {#if !layout.hidden('postmatch.notes')}
-            <div class="blk" style={blockStyle('postmatch.notes', orders, layout)}>
+            <div class="blk" data-design-id="core:postmatch.notes" style={blockStyle('postmatch.notes', orders, layout)}>
               <label class="notes-label scouter-notes"
                 >{layout.label('postmatch.notes', 'Post-match scout notes')} (optional)<textarea
                   class="form-input"
@@ -2403,6 +2488,23 @@
 </main>
 
 <style>
+  /* Design mode (the form designer's canvas): every question is selectable and draggable. */
+  .design-mode :global([data-design-id]) {
+    cursor: pointer;
+    outline: 1px dashed transparent;
+    outline-offset: 3px;
+    border-radius: var(--radius-md);
+    transition: outline-color 0.12s ease;
+  }
+  .design-mode :global([data-design-id]:hover) {
+    outline-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  .design-mode :global([data-design-id].design-selected) {
+    outline: 2px solid var(--accent);
+  }
+  .design-mode :global([data-design-id].design-over) {
+    box-shadow: -4px 0 0 var(--accent);
+  }
   .report-row-actions {
     display: flex;
     flex-wrap: wrap;

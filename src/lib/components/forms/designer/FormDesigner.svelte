@@ -6,18 +6,15 @@
   // History and can be brought back. The built-in form (src/lib/scouting/forms/formSchema.js) is always the baseline.
   import { onDestroy, onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
-  import { flip } from 'svelte/animate';
   import {
     AlignLeft,
     ChevronsUpDown,
     CircleDot,
-    GripVertical,
     Grid3x3,
     Hash,
     History,
     Image,
     Download,
-    Lock,
     Monitor,
     Upload,
     MousePointerClick,
@@ -32,15 +29,12 @@
     Type,
     Undo2
   } from 'lucide-svelte';
-  import CustomQuestions from '../CustomQuestions.svelte';
   import DesignerInspector from './DesignerInspector.svelte';
   import Dialog from '$lib/components/common/Dialog.svelte';
   import { requestConfirmation } from '$lib/app/confirmation.js';
   import {
-    CARD_SIZES,
     FORM_TYPES,
     QUESTION_TYPES,
-    TEXT_SIZES,
     convertQuestion,
     coreBlocksIn,
     createQuestion,
@@ -53,8 +47,7 @@
     newQuestionId,
     sanitizeForm,
     sectionItems,
-    shownOnKind,
-    styleOf
+    shownOnKind
   } from '$lib/scouting/forms/formSchema.js';
   import { canRedo, canUndo, createHistory, pushHistory, redo, undo } from '$lib/scouting/forms/history.js';
   import { discardDraft, loadAdminForm, publishForm, saveDraft } from '$lib/scouting/forms/formsClient.js';
@@ -104,12 +97,51 @@
   let device = 'desktop';
   let historyOpen = false;
   let viewing = null;
-  let previewAnswers = {};
-  let dragId = null;
-  let dragType = null;
-  let overId = null;
-  let overSection = null;
-  let canvasEl;
+  let frame;
+  let frameReady = false;
+  let framePhase = '';
+  let frameKind = 'data';
+
+  // Pit scouting has one page; match scouting opens on the kind picked in the toolbar.
+  $: frameSrc = formType === 'pit' ? '/pitscout?design=1' : `/matchscout?design=1&tab=${kindView || 'data'}`;
+  // A new page in the frame has to say it is ready again before it is sent anything.
+  let readySrc = '';
+  $: if (frameSrc !== readySrc) frameReady = false;
+  // Sends the draft (or the version being viewed) to the page in the frame whenever either changes.
+  $: if (frameReady && frame) sendToFrame(shown, selectedId, kindView);
+  function sendToFrame(schema, selected, kind, phase = null) {
+    frame?.contentWindow?.postMessage(
+      { type: 'form-design', schema, selectedId: selected, version: liveVersion, kind: kind || undefined, phase },
+      window.location.origin
+    );
+  }
+  function showPhase(phase) {
+    framePhase = phase;
+    const sectionKind = SECTION_KIND[phase];
+    if (formType === 'match' && sectionKind && kindView && sectionKind !== kindView) kindView = sectionKind;
+    sendToFrame(shown, selectedId, kindView || sectionKind || frameKind, phase);
+  }
+  function onFrameMessage(event) {
+    if (event.origin !== window.location.origin || event.source !== frame?.contentWindow) return;
+    const data = event.data || {};
+    if (data.type === 'design-ready') {
+      readySrc = frameSrc;
+      frameReady = true;
+      sendToFrame(shown, selectedId, kindView);
+    } else if (data.type === 'design-view') {
+      framePhase = data.phase;
+      frameKind = data.kind;
+    } else if (data.type === 'design-select') {
+      if (findItem(shown, data.id)) selectedId = data.id;
+    } else if (data.type === 'design-move' && !readonly) {
+      const target = data.beforeId ? findItem(form, data.beforeId) : null;
+      moveItem(data.id, target?.section || data.section, target ? data.beforeId : null);
+    } else if (data.type === 'design-add' && !readonly && QUESTION_TYPES[data.questionType]) {
+      const target = data.beforeId ? findItem(form, data.beforeId) : null;
+      const section = target?.section || (sections.some((entry) => entry.id === data.section) ? data.section : sections[0].id);
+      addQuestion(data.questionType, section, target ? data.beforeId : null);
+    }
+  }
 
   $: form = hist.present;
   $: sections = FORM_TYPES[formType].sections;
@@ -312,68 +344,14 @@
   }
 
   // --- Drag and drop. Palette types add a question; cards move.
-  function startDrag(event, { id = null, type = null }) {
+  // A question type dragged from the palette onto the page in the frame.
+  function startDrag(event, { type }) {
     if (readonly) return;
-    dragId = id;
-    dragType = type;
-    event.dataTransfer.effectAllowed = type ? 'copy' : 'move';
-    event.dataTransfer.setData('text/plain', id || type);
-  }
-  function overCard(event, sectionId, id) {
-    if (!dragId && !dragType) return;
-    event.preventDefault();
-    event.stopPropagation();
-    overId = id;
-    overSection = sectionId;
-  }
-  function overSectionArea(event, sectionId) {
-    if (!dragId && !dragType) return;
-    event.preventDefault();
-    overSection = sectionId;
-    overId = null;
-  }
-  function dropOn(event, sectionId) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (dragType) addQuestion(dragType, sectionId, overId);
-    else if (dragId && dragId !== overId) moveItem(dragId, sectionId, overId);
-    endDrag();
-  }
-  const endDrag = () => (dragId = dragType = overId = overSection = null);
-
-  // --- Resizing: drag a card's right edge; the width snaps to the nearest card size.
-  let resizing = null;
-  function startResize(event, item) {
-    if (readonly) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const card = event.currentTarget.closest('.card');
-    const grid = card.parentElement.getBoundingClientRect();
-    resizing = { item, left: card.getBoundingClientRect().left, column: grid.width / 12 };
-    window.addEventListener('pointermove', onResize);
-    window.addEventListener('pointerup', stopResize, { once: true });
-  }
-  function onResize(event) {
-    if (!resizing) return;
-    const span = Math.max(1, Math.round((event.clientX - resizing.left) / resizing.column));
-    const sizes = CARD_SIZES.filter((size) => size.span);
-    const nearest = sizes.reduce((best, size) => (Math.abs(size.span - span) < Math.abs(best.span - span) ? size : best));
-    const style = styleOf(resizing.item.kind === 'custom' ? resizing.item.question : { style: resizing.item.view.style });
-    if (style.size !== nearest.key) setStyle(resizing.item, { ...style, size: nearest.key });
-  }
-  function stopResize() {
-    window.removeEventListener('pointermove', onResize);
-    resizing = null;
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('text/plain', `design-new:${type}`);
   }
 
-  function cardVars(item) {
-    const style = styleOf(item.kind === 'custom' ? item.question : { style: item.view.style });
-    const span = CARD_SIZES.find((size) => size.key === style.size)?.span;
-    const scale = TEXT_SIZES.find((size) => size.key === style.textSize)?.scale ?? 1;
-    return [`--span:${span || 4}`, `--scale:${scale}`, style.accent ? `--accent:${style.accent}` : '']
-      .filter(Boolean)
-      .join(';');
-  }
+
 
   // --- Versions.
   function restore(entry) {
@@ -502,7 +480,11 @@
     }
   }
 
-  onMount(() => load(formType));
+  onMount(() => {
+    window.addEventListener('message', onFrameMessage);
+    load(formType);
+    return () => window.removeEventListener('message', onFrameMessage);
+  });
   onDestroy(() => {
     clearTimeout(bannerTimer);
     if (saveState === 'dirty') flushSave();
@@ -597,88 +579,42 @@
               disabled={readonly}
               title={type.blurb}
               on:dragstart={(event) => startDrag(event, { type: key })}
-              on:dragend={endDrag}
-              on:click={() => addQuestion(key, selected?.section || visibleSections[0].id)}
+              on:click={() => addQuestion(key, selected?.section || framePhase || visibleSections[0].id)}
             >
               <svelte:component this={ICONS[type.icon] || Plus} size={16} /><span>{type.label}</span>
             </button>
           {/each}
         </div>
-        <h4>Sections</h4>
-        <nav class="toc">
+        <h4>Outline</h4>
+        <nav class="outline">
           {#each visibleSections as entry (entry.id)}
-            <a href={`#ds-${entry.id}`}
-              >{entry.label}<small>{itemsBySection[entry.id]?.length || 0}</small></a
+            <button class="ol-section" class:on={framePhase === entry.id} on:click={() => showPhase(entry.id)}
+              >{entry.label}<small>{itemsBySection[entry.id]?.length || 0}</small></button
             >
+            {#each itemsBySection[entry.id] || [] as item (item.id)}
+              <button
+                class="ol-item"
+                class:on={selectedId === item.id}
+                class:off={item.kind === 'core' && item.view.hidden}
+                on:click={() => {
+                  selectedId = item.id;
+                  showPhase(entry.id);
+                }}>{item.kind === 'core' ? item.view.label : item.question.label || 'Untitled question'}</button
+              >
+            {/each}
           {/each}
         </nav>
       </aside>
 
       <div class="canvas-wrap">
-        <div class="canvas" class:phone={device === 'phone'} bind:this={canvasEl}>
-          {#each visibleSections as entry (entry.id)}
-            <section
-              id={`ds-${entry.id}`}
-              class="ds-section"
-              class:drop={overSection === entry.id && !overId}
-              aria-label={entry.label}
-              on:dragover={(event) => overSectionArea(event, entry.id)}
-              on:drop={(event) => dropOn(event, entry.id)}
-            >
-              <header class="ds-head">
-                <h3>{entry.label}</h3>
-                {#if formType === 'match' && SECTION_KIND[entry.id]}<span class="kind-tag"
-                    >{SECTION_KIND[entry.id]}</span
-                  >{/if}
-              </header>
-              <div class="ds-grid">
-                {#each itemsBySection[entry.id] || [] as item (item.id)}
-                  <div
-                    class="card"
-                    class:selected={selectedId === item.id}
-                    class:hidden-block={item.kind === 'core' && item.view.hidden}
-                    class:over={overId === item.id}
-                    class:problem={problems[item.id]}
-                    style={cardVars(item)}
-                    role="button"
-                    tabindex="0"
-                    draggable={!readonly}
-                    animate:flip={{ duration: 180 }}
-                    on:click={() => (selectedId = item.id)}
-                    on:keydown={(event) => event.key === 'Enter' && (selectedId = item.id)}
-                    on:dragstart={(event) => startDrag(event, { id: item.id })}
-                    on:dragend={endDrag}
-                    on:dragover={(event) => overCard(event, entry.id, item.id)}
-                    on:drop={(event) => dropOn(event, entry.id)}
-                  >
-                    <span class="grip" aria-hidden="true"><GripVertical size={14} /></span>
-                    {#if item.kind === 'core'}
-                      <div class="core">
-                        <div class="core-head">
-                          <b>{item.view.label}</b>
-                          <span class="tag"><Lock size={11} /> Built-in</span>
-                        </div>
-                        {#if item.view.help}<p>{item.view.help}</p>{/if}
-                        <small>{item.block.note || ''}</small>
-                        {#if item.view.hidden}<span class="tag hidden-tag">Hidden</span>{/if}
-                      </div>
-                    {:else}
-                      <div class="live" inert>
-                        <CustomQuestions questions={[item.question]} bind:answers={previewAnswers} />
-                      </div>
-                    {/if}
-                    {#if selectedId === item.id && !readonly}
-                      <!-- svelte-ignore a11y-no-static-element-interactions -->
-                      <span class="resize" title="Drag to resize" on:pointerdown={(event) => startResize(event, item)}></span>
-                    {/if}
-                  </div>
-                {/each}
-                {#if !(itemsBySection[entry.id] || []).length}
-                  <p class="empty-section">Drop a question here.</p>
-                {/if}
-              </div>
-            </section>
-          {/each}
+        <!-- The real scouting page, in design mode: exactly what a scout sees, edited in place. -->
+        <div class="frame-shell" class:phone={device === 'phone'}>
+          <iframe
+            bind:this={frame}
+            title="The scouting form as a scout sees it"
+            referrerpolicy="strict-origin-when-cross-origin"
+            src={frameSrc}
+          ></iframe>
         </div>
       </div>
 
@@ -911,175 +847,76 @@
   .type :global(svg) {
     color: var(--text-secondary);
   }
-  .toc {
-    display: grid;
-    gap: 2px;
-  }
-  .toc a {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.3rem 0.5rem;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    text-decoration: none;
-  }
-  .toc a:hover {
-    background: color-mix(in srgb, var(--text) 6%, transparent);
-    color: var(--text);
-  }
-  .toc small {
-    color: var(--text-muted);
-  }
-  .canvas-wrap {
-    min-width: 0;
-  }
-  .canvas {
-    display: grid;
-    gap: var(--space-4);
+  .frame-shell {
     margin: 0 auto;
-    transition: max-width 0.25s ease;
-    max-width: 100%;
-  }
-  .canvas.phone {
-    max-width: 24rem;
-  }
-  .ds-section {
-    padding: var(--space-4);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    background: var(--surface-1);
-    scroll-margin-top: calc(var(--strip-height, 3rem) + 5rem);
-    transition: border-color 0.15s ease;
+    overflow: hidden;
+    background: var(--background);
+    transition: max-width 0.25s ease;
   }
-  .ds-section.drop {
-    border-color: var(--accent);
+  .frame-shell.phone {
+    max-width: 24.5rem;
+    border-radius: 2rem;
+    border-width: 6px;
   }
-  .ds-head {
+  .frame-shell iframe {
+    display: block;
+    width: 100%;
+    height: calc(100 * var(--vh) - var(--strip-height, 3rem) - 9rem);
+    min-height: 40rem;
+    border: 0;
+  }
+  .outline {
+    display: grid;
+    gap: 1px;
+  }
+  .ol-section,
+  .ol-item {
     display: flex;
-    align-items: center;
+    justify-content: space-between;
     gap: var(--space-2);
-    margin-bottom: var(--space-3);
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
   }
-  .ds-head h3 {
-    margin: 0;
-    font-size: 1rem;
+  .ol-section {
+    margin-top: var(--space-2);
+    color: var(--text);
     font-weight: 500;
   }
-  .kind-tag {
-    padding: 0.05rem 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
+  .ol-section small {
     color: var(--text-muted);
-    font-size: 0.7rem;
-    text-transform: capitalize;
+  }
+  .ol-item {
+    padding-left: 1rem;
+    font-size: 0.8rem;
+  }
+  .ol-item.off {
+    color: var(--text-muted);
+    text-decoration: line-through;
+  }
+  .ol-section:hover,
+  .ol-item:hover {
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+  }
+  .ol-section.on,
+  .ol-item.on {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
   }
   /* The same 12-column grid the scouting page uses, so card widths match. */
   .ds-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: var(--space-3);
-  }
-  .canvas.phone .ds-grid .card {
-    grid-column: 1 / -1;
-  }
-  .card {
-    position: relative;
-    grid-column: span var(--span);
-    min-width: 0;
-    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface-2);
-    font-size: calc(1rem * var(--scale, 1));
-    cursor: pointer;
-    transition:
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
-  }
-  .card:hover {
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  }
-  .card.selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
-  }
-  .card.over {
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-  .card.problem {
-    border-color: var(--danger);
-  }
-  .card.hidden-block {
-    opacity: 0.5;
-  }
-  .grip {
-    position: absolute;
-    top: var(--space-3);
-    left: 4px;
-    color: var(--text-muted);
-    cursor: grab;
-  }
-  .live :global(.cq) {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-  }
-  .core {
-    display: grid;
-    gap: 4px;
-  }
-  .core-head {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-  .core b {
-    font-weight: 500;
-  }
-  .core p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.85em;
-  }
-  .core small {
-    color: var(--text-muted);
-    font-size: 0.78em;
-  }
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    flex: none;
-    align-self: start;
-    padding: 0.05rem 0.45rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    color: var(--text-muted);
-    font-size: 0.68rem;
-  }
-  .hidden-tag {
-    justify-self: start;
-  }
-  .resize {
-    position: absolute;
-    top: 0;
-    right: -4px;
-    bottom: 0;
-    width: 8px;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--accent) 60%, transparent);
-    cursor: ew-resize;
-  }
-  .empty-section {
-    grid-column: 1 / -1;
-    margin: 0;
-    padding: var(--space-4);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text-muted);
-    text-align: center;
   }
   .pub {
     display: grid;

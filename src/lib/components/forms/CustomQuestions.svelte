@@ -70,6 +70,7 @@
 {#each shown as question (question.id)}
   {@const look = styleOf(question)}
   <section
+    data-design-id={question.id}
     class="cq"
     class:missing={missing(question)}
     style={cardStyle(question)}
