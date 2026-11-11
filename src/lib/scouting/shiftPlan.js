@@ -1,7 +1,10 @@
-// Shift-based match scouting (Scouting Admin > Assignments > Shifts). A shift is one scout on one field slot (Red 1 ...
-// Blue 3) for a run of qualification matches: during it they scout whichever robot stands in that slot in every match,
-// then take a break while the next scout on that slot takes over. Publishing a plan turns every shift into ordinary
-// per-match assignments, so scouts see them exactly like any other assignment. Pure, so it can be tested.
+// Shift-based match scouting (Scouting Admin > Assignments). A shift is a run of qualification matches (Q1–Q10, say).
+// Inside it, each seat is one scout on one field slot (Red 1 ... Blue 3): they scout whichever robot stands in that
+// slot in every match of the shift, then take a break while the next shift's scouts take over. A slot can have several
+// scouts (double coverage), one scout can cover several slots (a whole alliance), and a seat with no scout yet is an
+// open seat. The plan is stored as one row per seat ({ id, slot, start, end, userId }); rows with the same range make
+// up one shift. Publishing turns every seat into ordinary per-match assignments using the TBA schedule, so scouts see
+// exactly which robot to watch in each match. Pure, so it can be tested.
 
 export const SLOTS = Object.freeze([
   { key: 'red1', label: 'Red 1', alliance: 'red', index: 0 },
@@ -30,34 +33,104 @@ export function normalizeShift(raw = {}) {
 }
 
 /**
- * Problems with a plan, as readable sentences: a shift with no scout, a backwards range, a range outside the
- * schedule, two shifts on the same slot that overlap, and one scout in two places at once.
+ * Problems with a plan, as readable sentences: a seat with no slot, a backwards range, a range outside the schedule,
+ * and the same scout twice on the same slot at the same time. Several scouts on one slot, one scout on several slots
+ * and open seats (no scout yet) are all fine.
  */
 export function validateShifts(shifts, { firstMatch = 1, lastMatch = Infinity, names = new Map() } = {}) {
   const problems = [];
   const label = (shift) =>
-    `${SLOTS.find((slot) => slot.key === shift.slot)?.label || 'A shift'} Q${shift.start ?? '?'}–Q${shift.end ?? '?'}`;
+    `${SLOTS.find((slot) => slot.key === shift.slot)?.label || 'A seat'} Q${shift.start ?? '?'}–Q${shift.end ?? '?'}`;
   const valid = [];
   for (const shift of shifts.map(normalizeShift)) {
-    if (!shift.slot) problems.push('Every shift needs a slot.');
+    if (!shift.slot) problems.push('Every seat needs a slot.');
     else if (shift.start == null || shift.end == null) problems.push(`${label(shift)} needs a start and an end match.`);
     else if (shift.start > shift.end) problems.push(`${label(shift)} ends before it starts.`);
     else if (shift.start < firstMatch || shift.end > lastMatch)
       problems.push(`${label(shift)} runs past the schedule (Q${firstMatch}–Q${lastMatch}).`);
-    else if (!shift.userId) problems.push(`${label(shift)} has no scout.`);
-    else valid.push(shift);
+    else if (shift.userId) valid.push(shift);
   }
   const overlaps = (a, b) => a.start <= b.end && b.start <= a.end;
-  for (let i = 0; i < valid.length; i += 1) {
+  for (let i = 0; i < valid.length; i += 1)
     for (let j = i + 1; j < valid.length; j += 1) {
       const [a, b] = [valid[i], valid[j]];
-      if (!overlaps(a, b)) continue;
-      if (a.slot === b.slot) problems.push(`${label(a)} overlaps ${label(b)}.`);
-      else if (a.userId === b.userId)
-        problems.push(`${names.get(a.userId) || 'One scout'} is on ${label(a)} and ${label(b)} at the same time.`);
+      if (a.slot === b.slot && a.userId === b.userId && overlaps(a, b))
+        problems.push(`${names.get(a.userId) || 'One scout'} is on ${label(a)} twice.`);
+    }
+  return [...new Set(problems)];
+}
+
+const slotIndex = (key) => SLOTS.findIndex((slot) => slot.key === key);
+
+/** The plan's seats grouped into shifts (one per match range), in match order and numbered from 1. */
+export function groupShifts(rows) {
+  const groups = new Map();
+  for (const row of rows || []) {
+    const key = `${row.start}-${row.end}`;
+    if (!groups.has(key)) groups.set(key, { key, start: row.start, end: row.end, rows: [] });
+    groups.get(key).rows.push(row);
+  }
+  return [...groups.values()]
+    .sort((a, b) => (a.start ?? 0) - (b.start ?? 0) || (a.end ?? 0) - (b.end ?? 0))
+    .map((group, index) => ({
+      ...group,
+      number: index + 1,
+      rows: [...group.rows].sort((a, b) => slotIndex(a.slot) - slotIndex(b.slot))
+    }));
+}
+
+/**
+ * A shift's people in seating order for the roster view (General shifts): everyone's first seat in slot order, then
+ * second seats, and so on, so Red 1, Red 2 ... Blue 3, then Red 1 again for a second scout.
+ */
+export function rosterOf(rows) {
+  const bySlot = SLOTS.map((slot) => (rows || []).filter((row) => row.slot === slot.key));
+  const rounds = Math.max(0, ...bySlot.map((list) => list.length));
+  const roster = [];
+  for (let round = 0; round < rounds; round += 1)
+    bySlot.forEach((list) => {
+      if (list[round]) roster.push(list[round]);
+    });
+  return roster;
+}
+
+/** The slot the nth person on a roster sits in: 1st Red 1, 2nd Red 2 ... 6th Blue 3, 7th Red 1 again. */
+export const rosterSlot = (index) => SLOTS[index % SLOTS.length];
+
+/** A shift's seats from a roster (scout ids, null for an open seat), seated in order. */
+export function rowsFromRoster(userIds, { start, end, newId }) {
+  return (userIds || []).map((userId, index) => ({
+    id: newId(),
+    slot: rosterSlot(index).key,
+    start,
+    end,
+    userId: userId || null
+  }));
+}
+
+/**
+ * Each scout's exact work from the TBA schedule: for every seat they hold and every qualification match in its range,
+ * the match, the robot in their slot and the slot. Map of scout id to a list in match order.
+ */
+export function scoutMatches(rows, schedule) {
+  const byNumber = new Map();
+  for (const match of schedule || []) {
+    const number = qualNumber(match);
+    if (number != null) byNumber.set(number, match);
+  }
+  const out = new Map();
+  for (const row of (rows || []).map(normalizeShift)) {
+    const slot = SLOTS.find((entry) => entry.key === row.slot);
+    if (!slot || !row.userId || row.start == null || row.end == null) continue;
+    for (let number = row.start; number <= row.end; number += 1) {
+      const match = byNumber.get(number);
+      const teamKey = match?.alliances?.[slot.alliance]?.team_keys?.[slot.index] || null;
+      if (!out.has(row.userId)) out.set(row.userId, []);
+      out.get(row.userId).push({ number, matchKey: match?.key || null, teamKey, slot: slot.key, slotLabel: slot.label });
     }
   }
-  return [...new Set(problems)];
+  for (const list of out.values()) list.sort((a, b) => a.number - b.number || slotIndex(a.slot) - slotIndex(b.slot));
+  return out;
 }
 
 /**
