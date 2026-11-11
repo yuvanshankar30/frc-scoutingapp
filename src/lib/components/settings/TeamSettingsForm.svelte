@@ -416,8 +416,8 @@
   }
   .palette.on,
   .font.on {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
   }
   .palette-swatches {
     display: flex;
@@ -449,36 +449,40 @@
     border-color: var(--accent);
     color: var(--text);
   }
+  /* Each group is a card, and everything inside runs top to bottom in one column. */
   .tsf {
-    border: 0;
-    margin: 0;
-    padding: 0;
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
     min-width: 0;
+    margin: 0;
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
   }
   .tsf-legend {
+    float: left;
+    width: 100%;
     padding: 0;
-    margin-bottom: var(--space-2);
-    font-family: var(--font-display);
-    font-size: 0.82rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--accent-strong);
+    margin: 0 0 var(--space-1);
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--text-strong, var(--text));
+  }
+  .tsf-legend + * {
+    clear: both;
   }
   .tsf-row {
-    display: flex;
-    gap: var(--space-3);
-    flex-wrap: wrap;
+    display: grid;
+    gap: var(--space-4);
   }
   .tsf-field {
     display: grid;
     gap: var(--space-1);
-    min-width: 8rem;
+    min-width: 0;
   }
   .tsf-field.grow {
-    flex: 1;
-    min-width: 12rem;
+    min-width: 0;
   }
   .tsf-field label,
   .tsf-label {
@@ -510,7 +514,9 @@
     cursor: pointer;
   }
   .swatch.on {
-    box-shadow: 0 0 0 3px var(--text);
+    box-shadow:
+      0 0 0 2px var(--surface-1),
+      0 0 0 4px var(--text-secondary);
   }
   .tsf-picker {
     width: 2.4rem;
@@ -528,7 +534,7 @@
   .tsf-seg {
     display: inline-flex;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     overflow: hidden;
     justify-self: start;
   }
@@ -541,8 +547,9 @@
     cursor: pointer;
   }
   .tsf-seg button.on {
-    background: var(--accent);
-    color: var(--accent-contrast);
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-1));
+    color: var(--text-strong, var(--text));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
   }
   .tsf-features {
     display: grid;

@@ -163,19 +163,19 @@
   .team-settings {
     display: grid;
     gap: var(--space-4);
-    max-width: 46rem;
+    max-width: 44rem;
   }
   .ts-form {
     display: grid;
-    gap: var(--space-5);
+    gap: var(--space-4);
   }
   .logo-row {
     display: flex;
     gap: var(--space-4);
     align-items: center;
-    padding: var(--space-4);
+    padding: var(--space-5);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .logo-actions {
