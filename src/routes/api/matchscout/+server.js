@@ -20,7 +20,7 @@ import { tbaMatchLabel } from '$lib/matches/matchKeys.js';
 import { canonicalMatchKey, canonicalReports } from '$lib/matches/matchKeys.js';
 import { resolveScoutedBy, scoutDisplayName, scoutProfilesFor } from '$lib/server/scouting/scoutIdentity.js';
 import { tbaMatchKeyFor } from '$lib/server/scouting/tbaEventLink.js';
-import { canAdministerFrom, isApprovedProfile } from '$lib/server/scouting/scoutingAccess.js';
+import { canAdministerFrom, canAdministerOr, isApprovedProfile } from '$lib/server/scouting/scoutingAccess.js';
 import { tbaJson } from '$lib/server/integrations/tba.js';
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' };
@@ -344,7 +344,7 @@ export async function POST({ request }) {
     // access rather than just "logged in" - same bar as publishing scout
     // assignments (see computeScoutingAccess in api/scout-assignments).
     const rosterKeys = await fetchRosterKeys(db, actor.id);
-    if (!canAdministerFrom(profile, rosterKeys)) return json({ error: 'Forbidden' }, { status: 403 });
+    if (!canAdministerOr(profile, rosterKeys, 'REMOVE_REPORTS')) return json({ error: 'Forbidden' }, { status: 403 });
 
     const { error } = await db.from('match_scout_entries').delete().eq('id', body.id);
     if (error) return json({ error: error.message }, { status: 500 });

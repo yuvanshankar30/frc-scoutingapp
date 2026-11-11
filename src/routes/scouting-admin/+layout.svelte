@@ -32,6 +32,8 @@
   import CountBars from '$lib/components/charts/CountBars.svelte';
   import { reportKindMix, robotsReportedPerMatch } from '$lib/scouting/adminCharts.js';
   import BottomSheet from '$lib/components/common/BottomSheet.svelte';
+  import RolesPanel from '$lib/components/admin/RolesPanel.svelte';
+  import ActivityPanel from '$lib/components/admin/ActivityPanel.svelte';
   import {
     CalendarClock,
     CalendarDays,
@@ -874,6 +876,8 @@
   $: if (!user?.id) {
     canAccess = null;
   }
+  // People > People, Roles or Activity.
+  let peopleView = 'people';
 </script>
 
 {#if canAccess === false}
@@ -1205,206 +1209,225 @@
     {:else if section === 'edit'}
       <FormEditor />
     {:else if section === 'scouts'}
-      <section class="scouts" aria-label="People">
-        <div class="scouts-bar">
-          <input
-            class="scout-search"
-            type="search"
-            placeholder="Search name or email"
-            bind:value={userSearch}
-            aria-label="Search people"
-          />
-          <label class="sf"
-            >Role
-            <Select bind:value={roleFilter} aria-label="Filter by role">
-              <option value="all">All roles ({users.length})</option>
-              <option value="none">Not assigned ({roleCounts.none || 0})</option>
-              {#each competitionRoleOptions as opt}<option value={opt}>{roleLabel(opt)} ({roleCounts[opt] || 0})</option
-                >{/each}
-            </Select>
-          </label>
-        </div>
-        {#if canManageAccounts && pendingUsers.length}
-          <div class="pending card" aria-label="Accounts waiting for approval">
-            <h3>Waiting for approval ({pendingUsers.length})</h3>
-            <p class="scouts-note">
-              These accounts signed up but can't see anything yet. Approve the people you know; ban the rest.
-            </p>
-            <ul>
-              {#each pendingUsers as row (row.id)}
-                <li>
-                  <span class="pending-who"><b>{nameOf(row)}</b><small>{row.email || '-'}</small></span>
-                  <span class="pending-actions">
-                    <button
-                      class="btn btn-sm btn-primary"
-                      type="button"
-                      disabled={accountBusyId !== null}
-                      on:click={() => approveUser(row)}>Approve</button
-                    >
-                    <button
-                      class="btn btn-sm btn-outline"
-                      type="button"
-                      disabled={accountBusyId !== null}
-                      on:click={() => rejectUser(row)}>Ban</button
-                    >
-                  </span>
-                </li>
-              {/each}
-            </ul>
+      <div class="people-views" role="tablist" aria-label="People">
+        {#each [['people', 'People'], ['roles', 'Roles'], ['activity', 'Activity']] as [key, label] (key)}
+          <button
+            role="tab"
+            aria-selected={peopleView === key}
+            class:on={peopleView === key}
+            on:click={() => (peopleView = key)}>{label}</button
+          >
+        {/each}
+      </div>
+      {#if peopleView === 'roles'}
+        <RolesPanel />
+      {:else if peopleView === 'activity'}
+        <ActivityPanel />
+      {:else}
+        <section class="scouts" aria-label="People">
+          <div class="scouts-bar">
+            <input
+              class="scout-search"
+              type="search"
+              placeholder="Search name or email"
+              bind:value={userSearch}
+              aria-label="Search people"
+            />
+            <label class="sf"
+              >Role
+              <Select bind:value={roleFilter} aria-label="Filter by role">
+                <option value="all">All roles ({users.length})</option>
+                <option value="none">Not assigned ({roleCounts.none || 0})</option>
+                {#each competitionRoleOptions as opt}<option value={opt}
+                    >{roleLabel(opt)} ({roleCounts[opt] || 0})</option
+                  >{/each}
+              </Select>
+            </label>
           </div>
-        {/if}
-        <p class="scouts-note">
-          Roles and teams save as you pick them, and a person can hold several roles. Competition Lead, Scouting Lead,
-          Strategy Lead, Pit Lead and the Picklist Leads can use Scouting Admin. Data, Performance and Robot Scouts each
-          open their own Match Scouting tab. The team applies to this competition only.
-        </p>
-
-        {#if !visibleUsers.length}
-          <p class="scouts-empty">No scouts match.</p>
-        {:else}
-          <ul class="scout-list">
-            <li class="scout-head" aria-hidden="true">
-              <span></span><span>Person</span><span>Competition roles</span><span>Team</span><span class="admin-head"
-                >Scouting Admin</span
-              >
-            </li>
-            {#each visibleUsers as row (row.id)}
-              <li class="scout-row" class:assigned={drafts[row.id]?.competition_roles?.length}>
-                <span class="av" aria-hidden="true">{initialOf(row)}</span>
-                <div class="who">
-                  {#if editingId === row.id}
-                    <form class="rename" on:submit|preventDefault={() => renameScout(row)}>
-                      <input
-                        id={`scout-name-${row.id}`}
-                        maxlength="120"
-                        placeholder="Full name"
-                        bind:value={nameDrafts[row.id]}
-                        aria-label={`Name for ${row.email}`}
-                      />
+          {#if canManageAccounts && pendingUsers.length}
+            <div class="pending card" aria-label="Accounts waiting for approval">
+              <h3>Waiting for approval ({pendingUsers.length})</h3>
+              <p class="scouts-note">
+                These accounts signed up but can't see anything yet. Approve the people you know; ban the rest.
+              </p>
+              <ul>
+                {#each pendingUsers as row (row.id)}
+                  <li>
+                    <span class="pending-who"><b>{nameOf(row)}</b><small>{row.email || '-'}</small></span>
+                    <span class="pending-actions">
                       <button
                         class="btn btn-sm btn-primary"
-                        type="submit"
-                        disabled={savingNameId !== null ||
-                          !nameDrafts[row.id]?.trim() ||
-                          nameDrafts[row.id] === row.full_name}>Save</button
+                        type="button"
+                        disabled={accountBusyId !== null}
+                        on:click={() => approveUser(row)}>Approve</button
                       >
-                      <button class="btn btn-sm" type="button" on:click={() => (editingId = null)}>Cancel</button>
-                    </form>
-                  {:else}
-                    <button
-                      type="button"
-                      class="name"
-                      title="Click to rename"
-                      on:click={() => {
-                        editingId = row.id;
-                        if (!nameDrafts[row.id]) nameDrafts[row.id] = scoutDisplayName(row) || '';
-                      }}>{scoutDisplayName(row) || 'Unnamed'}</button
-                    >
-                  {/if}
-                  <small
-                    >{row.email || '-'}{#if row.role === 'admin'}
-                      · Admin{/if}{#if !row.approved}
-                      · Waiting for approval{/if}</small
-                  >
-                  {#if canManageAccounts}
-                    {#if passwordForId === row.id}
-                      <form class="rename" on:submit|preventDefault={() => savePassword(row)}>
+                      <button
+                        class="btn btn-sm btn-outline"
+                        type="button"
+                        disabled={accountBusyId !== null}
+                        on:click={() => rejectUser(row)}>Ban</button
+                      >
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+          <p class="scouts-note">
+            Roles and teams save as you pick them, and a person can hold several roles. Competition Lead, Scouting Lead,
+            Strategy Lead, Pit Lead and the Picklist Leads can use Scouting Admin. Data, Performance and Robot Scouts
+            each open their own Match Scouting tab. The team applies to this competition only.
+          </p>
+
+          {#if !visibleUsers.length}
+            <p class="scouts-empty">No scouts match.</p>
+          {:else}
+            <ul class="scout-list">
+              <li class="scout-head" aria-hidden="true">
+                <span></span><span>Person</span><span>Competition roles</span><span>Team</span><span class="admin-head"
+                  >Scouting Admin</span
+                >
+              </li>
+              {#each visibleUsers as row (row.id)}
+                <li class="scout-row" class:assigned={drafts[row.id]?.competition_roles?.length}>
+                  <span class="av" aria-hidden="true">{initialOf(row)}</span>
+                  <div class="who">
+                    {#if editingId === row.id}
+                      <form class="rename" on:submit|preventDefault={() => renameScout(row)}>
                         <input
-                          type="password"
-                          autocomplete="new-password"
-                          minlength="8"
-                          placeholder="New password (8+ characters)"
-                          bind:value={passwordDraft}
-                          aria-label={`New password for ${row.email}`}
+                          id={`scout-name-${row.id}`}
+                          maxlength="120"
+                          placeholder="Full name"
+                          bind:value={nameDrafts[row.id]}
+                          aria-label={`Name for ${row.email}`}
                         />
                         <button
                           class="btn btn-sm btn-primary"
                           type="submit"
-                          disabled={accountBusyId !== null || passwordDraft.length < 8}>Set</button
+                          disabled={savingNameId !== null ||
+                            !nameDrafts[row.id]?.trim() ||
+                            nameDrafts[row.id] === row.full_name}>Save</button
                         >
-                        <button class="btn btn-sm" type="button" on:click={() => (passwordForId = null)}>Cancel</button>
+                        <button class="btn btn-sm" type="button" on:click={() => (editingId = null)}>Cancel</button>
                       </form>
                     {:else}
-                      <span class="account-actions">
-                        <button
-                          type="button"
-                          class="link-btn"
-                          disabled={accountBusyId !== null}
-                          on:click={() => {
-                            passwordForId = row.id;
-                            passwordDraft = '';
-                          }}>Set password</button
-                        >
-                        {#if me?.role === 'admin' && row.id !== me?.id}
-                          <button
-                            type="button"
-                            class="link-btn"
-                            disabled={accountBusyId !== null}
-                            on:click={() => toggleAdmin(row)}
-                            >{row.role === 'admin' ? 'Remove admin' : 'Make admin'}</button
-                          >
-                        {/if}
-                        {#if row.approved && row.role !== 'admin' && row.id !== me?.id}
-                          <button
-                            type="button"
-                            class="link-btn"
-                            disabled={accountBusyId !== null}
-                            on:click={() => approveUser(row, false)}>Take away access</button
-                          >
-                        {/if}
-                      </span>
-                    {/if}
-                  {/if}
-                </div>
-                <div class="roles">
-                  {#each drafts[row.id].competition_roles as role (role)}
-                    <span class="role-chip"
-                      >{roleLabel(role)}<button
+                      <button
                         type="button"
-                        aria-label={`Remove ${roleLabel(role)} from ${row.full_name || row.email}`}
-                        on:click={() => removeRole(row, role)}>&times;</button
-                      ></span
+                        class="name"
+                        title="Click to rename"
+                        on:click={() => {
+                          editingId = row.id;
+                          if (!nameDrafts[row.id]) nameDrafts[row.id] = scoutDisplayName(row) || '';
+                        }}>{scoutDisplayName(row) || 'Unnamed'}</button
+                      >
+                    {/if}
+                    <small
+                      >{row.email || '-'}{#if row.role === 'admin'}
+                        · Admin{/if}{#if !row.approved}
+                        · Waiting for approval{/if}</small
                     >
-                  {/each}
+                    {#if canManageAccounts}
+                      {#if passwordForId === row.id}
+                        <form class="rename" on:submit|preventDefault={() => savePassword(row)}>
+                          <input
+                            type="password"
+                            autocomplete="new-password"
+                            minlength="8"
+                            placeholder="New password (8+ characters)"
+                            bind:value={passwordDraft}
+                            aria-label={`New password for ${row.email}`}
+                          />
+                          <button
+                            class="btn btn-sm btn-primary"
+                            type="submit"
+                            disabled={accountBusyId !== null || passwordDraft.length < 8}>Set</button
+                          >
+                          <button class="btn btn-sm" type="button" on:click={() => (passwordForId = null)}
+                            >Cancel</button
+                          >
+                        </form>
+                      {:else}
+                        <span class="account-actions">
+                          <button
+                            type="button"
+                            class="link-btn"
+                            disabled={accountBusyId !== null}
+                            on:click={() => {
+                              passwordForId = row.id;
+                              passwordDraft = '';
+                            }}>Set password</button
+                          >
+                          {#if me?.role === 'admin' && row.id !== me?.id}
+                            <button
+                              type="button"
+                              class="link-btn"
+                              disabled={accountBusyId !== null}
+                              on:click={() => toggleAdmin(row)}
+                              >{row.role === 'admin' ? 'Remove admin' : 'Make admin'}</button
+                            >
+                          {/if}
+                          {#if row.approved && row.role !== 'admin' && row.id !== me?.id}
+                            <button
+                              type="button"
+                              class="link-btn"
+                              disabled={accountBusyId !== null}
+                              on:click={() => approveUser(row, false)}>Take away access</button
+                            >
+                          {/if}
+                        </span>
+                      {/if}
+                    {/if}
+                  </div>
+                  <div class="roles">
+                    {#each drafts[row.id].competition_roles as role (role)}
+                      <span class="role-chip"
+                        >{roleLabel(role)}<button
+                          type="button"
+                          aria-label={`Remove ${roleLabel(role)} from ${row.full_name || row.email}`}
+                          on:click={() => removeRole(row, role)}>&times;</button
+                        ></span
+                      >
+                    {/each}
+                    <Select
+                      compact
+                      wrap="sel-role"
+                      aria-label={`Add a competition role for ${row.email}`}
+                      bind:value={drafts[row.id].adding_role}
+                      on:change={() => addRole(row)}
+                    >
+                      <option value="">{drafts[row.id].competition_roles.length ? 'Add role' : 'Not assigned'}</option>
+                      {#each competitionRoleOptions.filter((opt) => !drafts[row.id].competition_roles.includes(opt)) as opt}<option
+                          value={opt}>{roleLabel(opt)}</option
+                        >{/each}
+                    </Select>
+                  </div>
                   <Select
                     compact
-                    wrap="sel-role"
-                    aria-label={`Add a competition role for ${row.email}`}
-                    bind:value={drafts[row.id].adding_role}
-                    on:change={() => addRole(row)}
+                    wide
+                    wrap="sel-team"
+                    aria-label={`FRC team for ${row.email}`}
+                    bind:value={drafts[row.id].frc_team}
+                    on:change={() => queueSaveRole(row)}
                   >
-                    <option value="">{drafts[row.id].competition_roles.length ? 'Add role' : 'Not assigned'}</option>
-                    {#each competitionRoleOptions.filter((opt) => !drafts[row.id].competition_roles.includes(opt)) as opt}<option
-                        value={opt}>{roleLabel(opt)}</option
-                      >{/each}
+                    <option value="">Not set</option>
+                    {#each frcTeamOptions as opt}<option value={opt}>{opt}</option>{/each}
                   </Select>
-                </div>
-                <Select
-                  compact
-                  wide
-                  wrap="sel-team"
-                  aria-label={`FRC team for ${row.email}`}
-                  bind:value={drafts[row.id].frc_team}
-                  on:change={() => queueSaveRole(row)}
-                >
-                  <option value="">Not set</option>
-                  {#each frcTeamOptions as opt}<option value={opt}>{opt}</option>{/each}
-                </Select>
-                <!-- Follows the roles picked above, using the same rule as the Scouting Admin API. -->
-                {#if hasScoutingAdmin(row, drafts[row.id].competition_roles)}
-                  <span class="admin-cell yes"
-                    ><Check size={16} aria-hidden="true" /><span class="admin-label">Scouting Admin</span></span
-                  >
-                {:else}
-                  <span class="admin-cell no"
-                    ><span aria-hidden="true">—</span><span class="sr-only">No Scouting Admin</span></span
-                  >
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </section>
+                  <!-- Follows the roles picked above, using the same rule as the Scouting Admin API. -->
+                  {#if hasScoutingAdmin(row, drafts[row.id].competition_roles)}
+                    <span class="admin-cell yes"
+                      ><Check size={16} aria-hidden="true" /><span class="admin-label">Scouting Admin</span></span
+                    >
+                  {:else}
+                    <span class="admin-cell no"
+                      ><span aria-hidden="true">—</span><span class="sr-only">No Scouting Admin</span></span
+                    >
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+      {/if}
     {:else if section === 'data'}
       <div class="sp-grid">
         <section class="sp-panel">
@@ -1548,6 +1571,34 @@
 {/if}
 
 <style>
+  .people-views {
+    display: inline-flex;
+    justify-self: start;
+    width: max-content;
+    max-width: 100%;
+    gap: 2px;
+    margin-bottom: var(--space-4);
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+  }
+  .people-views button {
+    min-height: 2rem;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .people-views button.on {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
+  }
   /* Event setup: one column of numbered steps under a summary of the current event. */
   .ev {
     display: grid;

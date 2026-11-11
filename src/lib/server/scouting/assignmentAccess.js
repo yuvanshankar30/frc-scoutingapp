@@ -25,13 +25,10 @@ export function computeAssignmentAccess(profile, rosterKeys) {
   const hasLeadKey = holdsScoutingAdminRole(rosterKeys);
   const hasMemberKey = [...keys].some(isScoutEligibleKey) || hasLeadKey;
 
-  // VIEW_ADMIN_PANEL (any team lead, general_role 'lead') already gets into
-  // the Scouting Admin page itself - direct instruction: everyone who can
-  // see this panel should be able to publish from it, not land in a
-  // confusing view-only state just because they hold no scouting-specific
-  // roster key of their own.
-  const canEditData = isAdmin || isLead || perms.has('DATA_SCOUT_ADMIN') || perms.has('VIEW_ADMIN_PANEL') || hasLeadKey;
-  const canEditNote = isAdmin || isLead || perms.has('NOTE_SCOUT_ADMIN') || perms.has('VIEW_ADMIN_PANEL') || hasLeadKey;
+  // A role carries assignment editing explicitly ("Manage match assignments" = DATA_SCOUT_ADMIN, "Manage note and
+  // pit assignments" = NOTE_SCOUT_ADMIN); opening Scouting Admin alone does not.
+  const canEditData = isAdmin || isLead || perms.has('DATA_SCOUT_ADMIN') || hasLeadKey;
+  const canEditNote = isAdmin || isLead || perms.has('NOTE_SCOUT_ADMIN') || hasLeadKey;
   // Quick Scout is a lighter-weight mode of the same data-scouting role, not a
   // separate team function - reuse Data Scout's eligibility/roster keys.
   const canEditQuick = canEditData;

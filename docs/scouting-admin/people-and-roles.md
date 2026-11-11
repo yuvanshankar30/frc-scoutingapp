@@ -32,3 +32,21 @@ Next to **Team**, a checkmark shows everyone who can use Scouting Admin: an admi
 holding a role that carries Scouting Admin (Scouting, Strategy, Pit, Picklist 1 or Picklist 2 Lead). Everyone else
 shows "—". The rule is `hasScoutingAdmin()` in `src/lib/scouting/competitionRoles.js`, the same one the Scouting Admin
 API checks. On phones the check and the words "Scouting Admin" sit next to the team picker.
+
+## Roles and permissions
+
+Scouting Admin > People > **Roles** builds roles out of permissions (the catalog is `PERMISSION_CATALOG` in
+`src/lib/app/accessRoles.js`, also served by `GET /api/access-roles`). Everyone without a role is a **Member**: once
+approved they can use the app, scout and read the analysis pages. A permission is only ever given through a role:
+assigning a role, or changing one, rewrites its holders' `user_profiles.permissions`, and deleting a role makes its
+holders Members again. Nobody can put a permission into a role, or give a role, that carries something they can't do
+themselves. Roles live in `access_roles`; a person's role is `user_profiles.access_role_id`.
+
+Admins, the Competition Lead and holders of a Scouting Admin competition role keep full access. Anyone else needs the
+specific permission for each action (the map is `ACTION_PERMISSIONS` in `src/routes/api/scouting-admin/+server.js`).
+
+## Activity
+
+People > **Activity** lists every change the database records in `activity_log` (a trigger on every main table, roles
+and team settings included): who did it, what kind of record, which record, and the fields that changed. Search
+filters what is loaded; the area dropdown narrows it on the server. Needs the "See the activity log" permission.

@@ -84,7 +84,7 @@ const read = async (response) => ({ status: response.status, ...(await response.
 const good = { ...createQuestion('buttons', 'teleop'), label: 'Climbed?' };
 
 beforeEach(() => {
-  actor = { actorId: 'u1', canAdminister: true };
+  actor = { actorId: 'u1', canAdminister: true, can: () => true };
   tables = {
     scouting_form_versions: [],
     scouting_form_drafts: [],
@@ -99,7 +99,7 @@ describe('scouting forms API', () => {
   });
 
   it('keeps drafts private to admins', async () => {
-    actor = { actorId: 'u2', canAdminister: false };
+    actor = { actorId: 'u2', canAdminister: false, can: () => false };
     expect((await read(await get('form=match&admin=1'))).status).toBe(403);
     expect(
       (await read(await post({ action: 'save-draft', form: 'match', schema: { questions: [good] } }))).status

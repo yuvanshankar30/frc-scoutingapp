@@ -245,6 +245,7 @@ export function activeItem(pathname, canAdmin = true) {
 export function canAdministerScouting(profile) {
   if (!profile || profile.banned) return false;
   if (profile.role === 'admin') return true;
+  if (Array.isArray(profile.permissions) && profile.permissions.includes('VIEW_ADMIN_PANEL')) return true;
   return isCompetitionLead(profile) || holdsScoutingAdminRole(profile.roster_keys);
 }
 

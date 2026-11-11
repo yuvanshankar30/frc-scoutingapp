@@ -74,6 +74,7 @@ describe('navigation', () => {
     expect(canAdministerScouting({ role: 'member', roster_keys: ['Competition Lead'] })).toBe(true);
     expect(canAdministerScouting({ role: 'member', team_role: 'Competition Lead', roster_keys: [] })).toBe(true);
     expect(canAdministerScouting({ role: 'member', roster_keys: ['Scouting Admin', 'Data Scout Member'] })).toBe(false);
+    // A role carrying "Open Scouting Admin" shows the tab; what it can change there is checked per action.
     expect(
       canAdministerScouting({
         role: 'member',
@@ -81,7 +82,7 @@ describe('navigation', () => {
         permissions: ['VIEW_ADMIN_PANEL'],
         roster_keys: []
       })
-    ).toBe(false);
+    ).toBe(true);
     expect(canAdministerScouting({ role: 'admin', banned: true })).toBe(false);
     expect(canAdministerScouting({ role: 'member', banned: true, roster_keys: ['Scouting Lead'] })).toBe(false);
     expect(canAdministerScouting({ role: 'member' })).toBe(false);

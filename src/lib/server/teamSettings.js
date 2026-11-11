@@ -67,9 +67,15 @@ export async function saveTeamSettings(columns, { db = null } = {}) {
   return (await loadTeamSettings({ fresh: true, db: client })).settings;
 }
 
-/** Admins and the Competition Lead may change the team settings. */
+/** Admins, the Competition Lead and roles carrying EDIT_TEAM_SETTINGS may change the team settings. */
 export const canEditTeamSettings = (profile, rosterKeys) =>
-  Boolean(profile && !profile.banned && (profile.role === 'admin' || isCompetitionLead(profile, rosterKeys)));
+  Boolean(
+    profile &&
+    !profile.banned &&
+    (profile.role === 'admin' ||
+      isCompetitionLead(profile, rosterKeys) ||
+      (Array.isArray(profile.permissions) && profile.permissions.includes('EDIT_TEAM_SETTINGS')))
+  );
 
 /** "data:image/png;base64,..." -> { type, bytes }, or an error. */
 export function decodeLogo(dataUrl) {

@@ -28,7 +28,8 @@ const publicVersion = (row) =>
 export async function GET({ url, request }) {
   const form = formOf(url.searchParams.get('form'));
   if (!form) return json({ error: 'form must be match or pit' }, { status: 400 });
-  const { actorId, canAdminister, db } = await actorFor(request);
+  const { actorId, can, db } = await actorFor(request);
+  const canAdminister = can('EDIT_FORMS');
   if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
 
   if (url.searchParams.get('admin') !== '1') {
@@ -102,7 +103,8 @@ export async function POST({ request }) {
     const body = await request.json();
     const form = formOf(body?.form);
     if (!form) return json({ error: 'form must be match or pit' }, { status: 400 });
-    const { actorId, canAdminister, db } = await actorFor(request);
+    const { actorId, can, db } = await actorFor(request);
+    const canAdminister = can('EDIT_FORMS');
     if (!actorId) return json({ error: 'Unauthorized' }, { status: 401 });
     if (!canAdminister) return json({ error: 'Forbidden' }, { status: 403 });
     const action = String(body?.action || '');
