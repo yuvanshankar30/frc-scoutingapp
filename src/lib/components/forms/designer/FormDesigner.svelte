@@ -261,6 +261,7 @@
     if (merged.label !== undefined && (!merged.label.trim() || merged.label === entry.label)) delete merged.label;
     if (merged.help !== undefined && merged.help === entry.help) delete merged.help;
     if (!merged.hidden) delete merged.hidden;
+    if (merged.required === entry.required) delete merged.required;
     const core = { ...(form.core || {}) };
     if (Object.keys(merged).length) core[key] = merged;
     else delete core[key];

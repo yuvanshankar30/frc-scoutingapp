@@ -16,6 +16,7 @@ import {
   MATCH_FORM_ROLES,
   MATCH_FORM_RATING_FIELDS,
   MATCH_OPTIONAL_RATING_FIELDS,
+  ALL_REQUIRED,
   validateMatchScoutForm,
   validatePerformanceRatings,
   validateRobotCondition,
@@ -143,7 +144,7 @@ export function normalizePowerRanking(value) {
 /**
  * @returns {{ value: object|null, error: string|null }}
  */
-export function normalizeMatchScoutEntry(body, actorId = null) {
+export function normalizeMatchScoutEntry(body, actorId = null, rules = ALL_REQUIRED) {
   const event_key = trimmed(body?.event_key, 60);
   const match_label = trimmed(body?.match_key, 120);
   const team_key = normalizeTeamKey(body?.team_key);
@@ -176,9 +177,9 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
   const report_kind = REPORT_KINDS.includes(body?.report_kind) ? body.report_kind : 'data';
   if (currentForm) {
     if (report_kind === 'data') {
-      const invalid = validateMatchScoutForm(body);
+      const invalid = validateMatchScoutForm(body, rules);
       if (invalid) return { value: null, error: invalid };
-      if (!robotNoShow(body) && !START_POSITIONS.includes(body.starting_position))
+      if (!robotNoShow(body) && rules.need('prematch.start') && !START_POSITIONS.includes(body.starting_position))
         return { value: null, error: 'Select a starting position.' };
     } else if (!String(body.scout_name || '').trim()) {
       return { value: null, error: 'Enter the scout name.' };
@@ -189,13 +190,18 @@ export function normalizeMatchScoutEntry(body, actorId = null) {
     if (body.section_fields >= 3) {
       const invalid =
         report_kind === 'performance'
-          ? validatePerformanceRatings(body)
+          ? validatePerformanceRatings(body, rules)
           : report_kind === 'robot'
-            ? validateRobotCondition(body)
+            ? validateRobotCondition(body, rules)
             : null;
       if (invalid) return { value: null, error: invalid };
     }
-    if (report_kind === 'robot' && !robotNoShow(body) && typeof body.mechanical_break !== 'boolean')
+    if (
+      report_kind === 'robot' &&
+      !robotNoShow(body) &&
+      rules.need('postmatch.break') &&
+      typeof body.mechanical_break !== 'boolean'
+    )
       return { value: null, error: 'Select whether a mechanical break occurred.' };
     if (body.mechanical_break != null && typeof body.mechanical_break !== 'boolean')
       return { value: null, error: 'Select whether a mechanical break occurred.' };

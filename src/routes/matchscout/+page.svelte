@@ -269,7 +269,10 @@
     matchKeyValid &&
     robotNumber.trim() &&
     scoutName.trim() &&
-    (noShow || reportKind !== 'data' || (startingPosition && typeof preload === 'boolean'));
+    (noShow ||
+      reportKind !== 'data' ||
+      ((!layout.need('prematch.start') || startingPosition) &&
+        (!layout.need('prematch.preload') || typeof preload === 'boolean')));
   $: assignmentLabel = assignmentReady ? `Match ${matchNumber} · Robot ${robotNumber}` : 'Set your assignment';
   // The pit crew handoff belongs to Robot scouting, the tab that watches the robot's condition.
   $: requiresPitReport =
@@ -470,7 +473,7 @@
   });
 
   function continueFromTeleop() {
-    const invalid = validateMatchScoutForm(formAnswers());
+    const invalid = validateMatchScoutForm(formAnswers(), layout);
     if (invalid) {
       error = invalid;
       return;
@@ -479,7 +482,7 @@
   }
 
   function continueFromPerformance() {
-    const invalid = validatePerformanceRatings(ratingAnswers());
+    const invalid = validatePerformanceRatings(ratingAnswers(), layout);
     if (invalid) {
       error = invalid;
       return;
@@ -488,12 +491,12 @@
   }
 
   function continueFromRobot() {
-    const invalid = validateRobotCondition(conditionAnswers());
+    const invalid = validateRobotCondition(conditionAnswers(), layout);
     if (invalid) {
       error = invalid;
       return;
     }
-    if (!noShow && typeof mechanicalBreak !== 'boolean') {
+    if (!noShow && layout.need('postmatch.break') && typeof mechanicalBreak !== 'boolean') {
       error = 'Select whether a mechanical break occurred.';
       return;
     }
@@ -869,16 +872,16 @@
     }
     const invalid =
       reportKind === 'performance'
-        ? validatePerformanceRatings(ratingAnswers())
+        ? validatePerformanceRatings(ratingAnswers(), layout)
         : reportKind === 'robot'
-          ? validateRobotCondition(conditionAnswers())
-          : validateMatchScoutForm(formAnswers());
+          ? validateRobotCondition(conditionAnswers(), layout)
+          : validateMatchScoutForm(formAnswers(), layout);
     if (invalid) {
       phase = reportKind === 'data' ? 'teleop' : reportKind;
       error = invalid;
       return;
     }
-    if (!noShow && reportKind === 'robot' && typeof mechanicalBreak !== 'boolean') {
+    if (!noShow && reportKind === 'robot' && layout.need('postmatch.break') && typeof mechanicalBreak !== 'boolean') {
       phase = 'robot';
       error = 'Select whether a mechanical break occurred.';
       return;

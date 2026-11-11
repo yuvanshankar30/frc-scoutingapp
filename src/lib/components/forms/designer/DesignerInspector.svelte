@@ -195,8 +195,18 @@
             />
             <span>Show this on the form</span>
           </label>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={view.required}
+              disabled={view.hidden}
+              on:change={(e) => dispatch('core', { changes: { required: e.currentTarget.checked } })}
+            />
+            <span>Required</span>
+          </label>
+          <p class="note small">Hidden or optional, it is simply left empty in reports and exports.</p>
         {:else}
-          <p class="note small">Reports and analytics need this, so it always shows.</p>
+          <p class="note small">Every report needs the match and robot it is for, so this one always shows.</p>
         {/if}
       {/if}
     </section>

@@ -170,7 +170,11 @@ describe('scouting forms API', () => {
     };
     await post({ action: 'publish', form: 'match', schema, base_version: 0 });
     const live = (await read(await get('form=match'))).data.schema;
-    expect(live.core).toEqual({ 'teleop.notes': { label: 'Anything to add?', hidden: true } });
+    // Every built-in can be hidden now, Observed roles included: games change, so nothing is locked.
+    expect(live.core).toEqual({
+      'teleop.notes': { label: 'Anything to add?', hidden: true },
+      'teleop.roles': { hidden: true }
+    });
     expect(live.order.teleop).toEqual([good.id, 'core:teleop.notes']);
   });
 

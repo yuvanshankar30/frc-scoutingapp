@@ -192,7 +192,7 @@ describe('built-in blocks', () => {
     );
   });
 
-  it('keeps only known blocks, wording that differs from the default, and hides only optional blocks', () => {
+  it('keeps only known blocks and wording that differs from the default; every block but the assignment can hide', () => {
     const form = sanitizeForm(
       {
         questions: [],
@@ -200,7 +200,8 @@ describe('built-in blocks', () => {
           'teleop.notes': { label: 'Anything to add?', hidden: true },
           'teleop.roles': { label: 'Roles', hidden: true, help: 'Pick all' },
           'teleop.balls': { label: 'Balls scored' },
-          'prematch.assignment': { label: 'Nope' },
+          'prematch.assignment': { label: 'Who and when', hidden: true },
+          'teleop.ratings': { required: false },
           'bogus.key': { label: 'x' }
         }
       },
@@ -208,7 +209,9 @@ describe('built-in blocks', () => {
     );
     expect(form.core).toEqual({
       'teleop.notes': { label: 'Anything to add?', hidden: true },
-      'teleop.roles': { label: 'Roles', help: 'Pick all' }
+      'teleop.roles': { label: 'Roles', hidden: true, help: 'Pick all' },
+      'prematch.assignment': { label: 'Who and when' },
+      'teleop.ratings': { required: false }
     });
   });
   it('lists built-ins before added questions, then follows a saved order and ignores unknown ids', () => {

@@ -4,15 +4,17 @@
 // Answers are stored by question id; the form version they were answered against is stored with them,
 // so an old report can always be read against the questions it was answered with.
 
-// The built-in questions are grouped into blocks that the editor can reword, reorder and (when nothing
-// depends on them) hide. `optional: false` means the saved report or its analytics need the answer, so the block
-// can be moved and reworded but not hidden. `help: null` means the block has no help text to edit.
-const block = (key, label, { help = null, optional = true, rename = true, note = '' } = {}) => ({
+// The built-in questions are grouped into blocks. Every block can be reworded, restyled, moved, hidden and made
+// required or optional: games change from year to year, so nothing is locked. `optional: false` here only sets the
+// starting point, required; an admin can change it. The one exception is the match, robot and alliance a report is
+// for, which every report needs. `help: null` means the block has no help text to edit.
+const block = (key, label, { help = null, optional = true, note = '' } = {}) => ({
   key,
   label,
   help,
-  optional,
-  rename,
+  required: optional === false,
+  optional: key !== 'prematch.assignment',
+  rename: true,
   note
 });
 
@@ -417,6 +419,7 @@ function sanitizeCore(raw, formType) {
       if (help !== entry.help) kept.help = help;
     }
     if (entry.optional && value.hidden === true) kept.hidden = true;
+    if (typeof value.required === 'boolean' && value.required !== entry.required) kept.required = value.required;
     const style = sanitizeStyle(value.style);
     if (style) kept.style = style;
     if (Object.keys(kept).length) core[key] = kept;
@@ -475,6 +478,7 @@ export function coreView(form, entry) {
     label: override.label ?? entry.label,
     help: override.help ?? entry.help,
     hidden: override.hidden === true,
+    required: override.required ?? entry.required,
     style: override.style || null,
     renamed: override.label !== undefined,
     helpChanged: override.help !== undefined
@@ -508,7 +512,8 @@ export function createLayout(form, formType) {
   const blocks = new Map(
     (FORM_TYPES[formType]?.sections || []).flatMap((section) => section.blocks).map((entry) => [entry.key, entry])
   );
-  const view = (key) => (blocks.has(key) ? coreView(form, blocks.get(key)) : { label: '', help: null, hidden: false });
+  const view = (key) =>
+    blocks.has(key) ? coreView(form, blocks.get(key)) : { label: '', help: null, hidden: false, required: true };
   return {
     order: (id) => position.get(id) ?? 0,
     label: (key, fallback = '') => view(key).label || fallback,
@@ -517,6 +522,9 @@ export function createLayout(form, formType) {
       return help === undefined || help === null ? fallback : help;
     },
     hidden: (key) => view(key).hidden,
+    // Whether the scout must answer this block: shown, and required in the form (built-in default or the admin's).
+    need: (key) => (blocks.has(key) ? !view(key).hidden && view(key).required !== false : true),
+    shown: (key) => !view(key).hidden,
     // A built-in block's card style, with defaults filled in.
     style: (key) => ({ ...DEFAULT_STYLE, ...(view(key).style || {}) }),
     orders: position

@@ -7,7 +7,7 @@ import {
   requiresPitProblemReport,
   validatePitProblemHandoff
 } from '$lib/server/scouting/matchScoutingSchema.js';
-import { customAnswersFor } from '$lib/server/scouting/customAnswers.js';
+import { customAnswersFor, formRulesFor } from '$lib/server/scouting/customAnswers.js';
 import { notifyPitProblem } from '$lib/server/integrations/pit_problem_notifications.js';
 import {
   combinedPitProblemFields,
@@ -222,7 +222,8 @@ export async function POST({ request }) {
   if (action === 'save-entry') {
     // All live submissions follow v2. The legacy normalizer exists only for
     // historical data; omitting form_version cannot bypass required answers.
-    const { value, error: invalid } = normalizeMatchScoutEntry({ ...body, form_version: 2 }, actor.id);
+    const rules = await formRulesFor(db, 'match', body);
+    const { value, error: invalid } = normalizeMatchScoutEntry({ ...body, form_version: 2 }, actor.id, rules);
     if (invalid) return json({ error: invalid }, { status: 400 });
     const handoffError = validatePitProblemHandoff(body);
     if (handoffError) return json({ error: handoffError }, { status: 400 });

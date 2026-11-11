@@ -107,28 +107,39 @@ export function normalizeDefense(value) {
 // A robot that never showed up has nothing else to report: "No" on robot_present makes every other answer optional.
 export const robotNoShow = (body) => body?.robot_present === false;
 
-export function validateMatchScoutForm(body) {
+// `rules` comes from the form design (createLayout in forms/formSchema.js): need(key) is true when that built-in
+// question is shown and required, shown(key) when it is on the form at all. Without a form, everything is required.
+export const ALL_REQUIRED = Object.freeze({ need: () => true, shown: () => true });
+
+export function validateMatchScoutForm(body, rules = ALL_REQUIRED) {
   if (!String(body.scout_name || '').trim()) return 'Enter the scout name.';
   if (robotNoShow(body)) return null;
-  if (typeof body.preload !== 'boolean') return 'Select whether the robot has a preload.';
-  if (!Array.isArray(body.teleop_roles) || (!body.teleop_roles.length && body.teleop_roles_none !== true))
+  if (rules.need('prematch.preload') && typeof body.preload !== 'boolean')
+    return 'Select whether the robot has a preload.';
+  const roles = Array.isArray(body.teleop_roles) ? body.teleop_roles : [];
+  if (rules.need('teleop.roles') && !roles.length && body.teleop_roles_none !== true)
     return 'Select teleop roles or None observed.';
-  if ((body.teleop_roles || []).some((role) => !MATCH_FORM_ROLES.includes(role))) return 'Select valid teleop roles.';
+  if (roles.some((role) => !MATCH_FORM_ROLES.includes(role))) return 'Select valid teleop roles.';
   const balls = parseAutoPointsEstimate(body.balls_scored_band);
-  if (!balls || !Number.isInteger(balls.min) || (balls.max !== null && !Number.isInteger(balls.max)))
+  if (
+    (rules.need('teleop.balls') || String(body.balls_scored_band || '').trim()) &&
+    (!balls || !Number.isInteger(balls.min) || (balls.max !== null && !Number.isInteger(balls.max)))
+  )
     return 'Enter balls scored as a whole number, range, or lower bound.';
-  if (currentSections(body) && body.teleop_roles.includes('Defense')) return validateDefense(body);
+  if (currentSections(body) && roles.includes('Defense') && rules.need('teleop.defense'))
+    return validateDefense(body, rules);
   return null;
 }
 
 /** A robot that played defense: who it defended, when, how well, and the scout's description of it. */
-export function validateDefense(body) {
+export function validateDefense(body, rules = ALL_REQUIRED) {
   const defense = normalizeDefense(body.defense);
   if (!defense?.targets.length) return 'Select the robots it defended against.';
   if (!defense.periods.length) return 'Select whether it defended while its hub was active or inactive.';
   if (!defense.shifts.length) return 'Select the shifts it played defense in.';
   if (!defense.effectiveness) return `Rate how effective the defense was from 1 to ${DEFENSE_EFFECTIVENESS_MAX}.`;
-  if (!String(body.teleop_notes || '').trim()) return 'Describe the defense in Real-scout observations.';
+  if (rules.shown('teleop.notes') && !String(body.teleop_notes || '').trim())
+    return 'Describe the defense in Real-scout observations.';
   return null;
 }
 
@@ -137,18 +148,25 @@ export function validateDefense(body) {
  * BPS slider, intake speed, driver skill, the power ranking and the notes. Older reports rate shot accuracy and BPS,
  * each rated or deliberately left unjudged.
  */
-export function validatePerformanceRatings(body) {
+export function validatePerformanceRatings(body, rules = ALL_REQUIRED) {
   if (robotNoShow(body)) return null;
   if (currentSections(body)) {
     const accuracy = body.ratings?.['Shot accuracy'];
-    if (!Number.isInteger(accuracy) || accuracy < 1 || accuracy > 5) return 'Rate Shot accuracy.';
+    if (rules.need('teleop.ratings') && (!Number.isInteger(accuracy) || accuracy < 1 || accuracy > 5))
+      return 'Rate Shot accuracy.';
     const bps = Number(body.bps);
-    if (body.bps === null || body.bps === '' || body.bps === undefined || !Number.isFinite(bps) || bps < 0)
+    if (
+      rules.need('performance.bps') &&
+      (body.bps === null || body.bps === '' || body.bps === undefined || !Number.isFinite(bps) || bps < 0)
+    )
       return 'Set balls per second with the slider.';
-    if (![1, 2, 3].includes(Number(body.intake_speed))) return 'Rate intake speed.';
-    if (![1, 2, 3, 4, 5].includes(Number(body.driver_skill))) return 'Rate driver skill.';
-    if (!body.power_ranking || !Object.keys(body.power_ranking).length) return 'Rank the robots you watched.';
-    if (!String(body.performance_notes || '').trim()) return 'Write your notes about performance.';
+    if (rules.need('teleop.intake') && ![1, 2, 3].includes(Number(body.intake_speed))) return 'Rate intake speed.';
+    if (rules.need('performance.driver') && ![1, 2, 3, 4, 5].includes(Number(body.driver_skill)))
+      return 'Rate driver skill.';
+    if (rules.need('performance.ranking') && (!body.power_ranking || !Object.keys(body.power_ranking).length))
+      return 'Rank the robots you watched.';
+    if (rules.need('performance.notes') && !String(body.performance_notes || '').trim())
+      return 'Write your notes about performance.';
     return null;
   }
   for (const field of MATCH_FORM_RATING_FIELDS) {
@@ -162,22 +180,23 @@ export function validatePerformanceRatings(body) {
 }
 
 /** The required Robot scouting answers about the robot's condition: significant crash and robot status. */
-export function validateRobotCondition(body) {
+export function validateRobotCondition(body, rules = ALL_REQUIRED) {
   if (robotNoShow(body)) return null;
-  if (typeof body.significant_crash !== 'boolean') return 'Select whether a significant crash occurred.';
+  if (rules.need('teleop.crash') && typeof body.significant_crash !== 'boolean')
+    return 'Select whether a significant crash occurred.';
   if (body.significant_crash && !['robot', 'wall', 'field element', 'other'].includes(body.crash_target))
     return 'Select what the robot crashed into.';
   if (body.significant_crash && body.crash_target === 'other' && !String(body.crash_details || '').trim())
     return 'Describe the other crash target.';
   if (currentSections(body)) {
     const missing = MATCH_SHIFTS.find((shift) => !ROBOT_SHIFT_STATUSES.includes(body.robot_status_shifts?.[shift.key]));
-    if (missing) return `Select the robot status for ${missing.label}.`;
+    if (rules.need('teleop.status') && missing) return `Select the robot status for ${missing.label}.`;
   } else if (!['active', 'dead', 'stopped', 'brownout', 'unknown'].includes(body.teleop_robot_status))
     return 'Select the robot status.';
   if (currentSections(body)) {
-    if (body.mechanical_break === true && !String(body.break_details || '').trim())
+    if (rules.shown('postmatch.break') && body.mechanical_break === true && !String(body.break_details || '').trim())
       return 'Record what broke on the robot.';
-    if ((Number(body.fouls_minor) || 0) + (Number(body.fouls_major) || 0) > 0) {
+    if (rules.shown('robot.fouls') && (Number(body.fouls_minor) || 0) + (Number(body.fouls_major) || 0) > 0) {
       if (!FOUL_NATURES.includes(body.foul_nature)) return 'Select the nature of the foul.';
       if (body.foul_nature === 'Other' && !String(body.foul_details || '').trim()) return 'Describe the foul.';
     }
