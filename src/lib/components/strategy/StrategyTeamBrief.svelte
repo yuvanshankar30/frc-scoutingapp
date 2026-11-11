@@ -416,15 +416,20 @@
     gap: var(--space-4);
     min-width: 0;
   }
+  /* The grid gap is the only spacing between sections (no stray card margins), so every gap is the same. */
+  .brief > :global(*),
+  .two > :global(*) {
+    margin: 0;
+  }
   .hero {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: var(--space-4);
     flex-wrap: wrap;
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     border: 1px solid var(--border);
-    border-left: 4px solid var(--accent);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .hero-id {
@@ -436,9 +441,10 @@
   .number {
     font-family: var(--font-display);
     font-size: 2.6rem;
-    font-weight: 800;
+    font-weight: 500;
+    letter-spacing: -0.03em;
     line-height: 1;
-    color: var(--accent-strong);
+    color: var(--text-strong, var(--text));
     font-variant-numeric: tabular-nums;
   }
   .hero h2 {
@@ -465,6 +471,7 @@
     min-height: 3.25rem;
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     background: var(--surface-2);
   }
   .chip small {
@@ -498,15 +505,19 @@
     min-height: 7.5rem;
     padding: var(--space-4);
     border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .metric .k {
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
   }
   .metric strong {
+    font-weight: 500;
+    letter-spacing: -0.02em;
     font-size: 2.1rem;
     line-height: 1.1;
     font-variant-numeric: tabular-nums;
@@ -525,8 +536,9 @@
     gap: var(--space-3);
     align-content: start;
     min-width: 0;
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
   }
   .card-head {
@@ -538,7 +550,11 @@
   }
   .card h3 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
   }
   .card h4 {
     margin: var(--space-2) 0 0;
@@ -686,13 +702,14 @@
     gap: var(--space-1);
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     background: var(--surface-2);
   }
   .upcoming li.red {
-    border-left: 3px solid var(--red-base);
+    box-shadow: inset 3px 0 0 var(--alliance-red-text);
   }
   .upcoming li.blue {
-    border-left: 3px solid var(--blue-base);
+    box-shadow: inset 3px 0 0 var(--alliance-blue-text);
   }
   .up-top {
     display: flex;
