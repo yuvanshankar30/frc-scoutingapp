@@ -61,6 +61,6 @@ curl -s "http://localhost:5173/api/tba/event-info?event_key=2026cc"
 | --- | --- |
 | Every page says "Not connected to a database yet" | `.env` is missing or incomplete, or the schema is not applied. In development the page shows which. Fill in `.env` and restart the server |
 | A reminder to set your team shows on every page | No team yet: set it in Scouting Admin > Team settings or with `npm run admin -- set-team` |
-| Sign-up says to check your email, but no email comes | Hosted Supabase's built-in email is rate limited; set up SMTP in Supabase, turn off "Confirm email" while developing, or add accounts in Scouting Admin > Add user |
+| Sign-up says to check your email, but no email comes | Hosted Supabase's built-in email is rate limited; set up SMTP in Supabase, or turn off "Confirm email" while developing |
 | Signed in but every page is empty | Your account is waiting for approval. An admin approves it in Scouting Admin > People |
 | Requests fail when the server is started from a sandboxed shell | The server needs network access. Start it from a normal terminal |

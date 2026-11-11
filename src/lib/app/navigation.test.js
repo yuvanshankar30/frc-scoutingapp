@@ -104,9 +104,7 @@ describe('navigation', () => {
       'Edit',
       'People',
       'Team settings',
-      'Add user',
-      'Data',
-      'Extra'
+      'Data'
     ]);
   });
 

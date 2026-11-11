@@ -32,11 +32,9 @@
     ClipboardCheck,
     ClipboardList,
     Database,
-    Dice5,
     Eye,
     Gamepad2,
     Globe,
-    GraduationCap,
     House,
     LayoutDashboard,
     ListChecks,
@@ -69,11 +67,9 @@
     ClipboardCheck,
     ClipboardList,
     Database,
-    Dice5,
     Eye,
     Gamepad2,
     Globe,
-    GraduationCap,
     House,
     LayoutDashboard,
     ListChecks,
@@ -111,6 +107,10 @@
       ].join('\n')
     : '';
   $: appName = $team?.appName || 'Scouting';
+  // The app name with its last word set in the serif accent, like the Hub's brand.
+  $: brandWords = String(appName).trim().split(/\s+/);
+  $: brandHead = brandWords.length > 1 ? `${brandWords.slice(0, -1).join(' ')} ` : appName;
+  $: brandTail = brandWords.length > 1 ? brandWords.at(-1) : '';
 
   const RAIL_STORAGE_KEY = 'scouting-rail-collapsed';
   let collapsed = false;
@@ -267,7 +267,9 @@
       <div class="brand-row">
         <a class="brand" href="/" title={appName}>
           <TeamMark size={34} />
-          <span class="brand-text">{appName}</span>
+          <span class="brand-text"
+            >{brandHead}{#if brandTail}<span class="serif-accent">{brandTail}</span>{/if}</span
+          >
         </a>
         <button
           type="button"
@@ -529,8 +531,10 @@
     flex-direction: column;
     gap: calc(var(--rp) * 1.5);
     padding: var(--space-4) var(--space-3);
-    background: var(--surface-1);
-    border-right: 1px solid var(--border);
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
     overflow: hidden;
   }
   .brand-row {
@@ -539,7 +543,7 @@
     justify-content: space-between;
     gap: var(--space-2);
     padding: 0 var(--space-1) var(--space-3) var(--space-2);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   .brand {
     display: flex;
@@ -547,16 +551,16 @@
     gap: var(--space-2);
     min-width: 0;
     text-decoration: none;
-    color: var(--text);
+    color: var(--text-strong, var(--text));
   }
   .rail-toggle {
     flex-shrink: 0;
   }
   .brand-text {
-    font-family: var(--font-display);
+    font-family: var(--font-body, var(--font-display));
     font-weight: 600;
-    letter-spacing: 0.02em;
-    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    font-size: 1.12rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -572,10 +576,11 @@
     gap: 2px;
   }
   .rail-label {
-    margin: 0 0 var(--space-1) var(--space-2);
-    font-family: var(--font-display);
-    font-size: 0.72rem;
-    letter-spacing: 0.16em;
+    margin: 0 0 var(--space-1) var(--space-3);
+    font-family: var(--font-body, var(--font-display));
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
@@ -585,18 +590,15 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--rp) var(--space-2);
-    border-radius: var(--radius-sm);
+    padding: var(--rp) var(--space-3);
+    border-radius: var(--radius-full);
     color: var(--text-secondary);
     text-decoration: none;
     font-weight: 500;
     font-size: 0.92rem;
   }
   .rail-home {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 0.95rem;
     color: var(--text);
   }
   .rail-link,
@@ -608,14 +610,17 @@
   }
   .rail-link:hover,
   .rail-home:hover {
-    background: var(--surface-2);
-    color: var(--text);
-    transform: translateX(2px);
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: var(--text-strong, var(--text));
   }
   .rail-link.active,
   .rail-home.active {
-    background: var(--accent-subtle);
-    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text-strong, var(--text));
+  }
+  .rail-link.active :global(svg),
+  .rail-home.active :global(svg) {
+    color: var(--accent);
   }
   .rail-link::before,
   .rail-home::before {
@@ -638,7 +643,7 @@
     display: grid;
     gap: var(--space-2);
     padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   /* The rail never scrolls, so on shorter windows it tightens instead until every link fits. */
   @media (min-width: 901px) and (max-height: 62rem) {
@@ -717,7 +722,7 @@
     width: 2.1rem;
     height: 2.1rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
@@ -744,9 +749,10 @@
     gap: var(--space-3);
     min-height: var(--strip-height);
     padding: 0 var(--space-5);
-    background: color-mix(in srgb, var(--background) 88%, transparent);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
   .strip-left {
     display: flex;
@@ -754,20 +760,23 @@
     gap: var(--space-2);
   }
   .strip-title {
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    font-family: var(--font-body, var(--font-display));
+    font-size: 1.2rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--text-strong, var(--text));
   }
   .strip-event {
     flex: 0 0 auto;
     margin-left: var(--space-3);
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text);
+    color: var(--text-secondary);
   }
   .menu-btn {
     display: none;

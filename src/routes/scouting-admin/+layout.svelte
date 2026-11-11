@@ -23,8 +23,6 @@
   import TeamRankingDefensePanel from '$lib/components/scouting/TeamRankingDefensePanel.svelte';
   import MatchKeyReview from '$lib/components/scouting/MatchKeyReview.svelte';
   import DataStoragePanel from '$lib/components/scouting/DataStoragePanel.svelte';
-  import AdminModelsPanel from '$lib/components/scouting/AdminModelsPanel.svelte';
-  import AdminAddUser from '$lib/components/scouting/AdminAddUser.svelte';
   import TeamSettingsPanel from '$lib/components/settings/TeamSettingsPanel.svelte';
   import TbaEventPicker from '$lib/components/scouting/TbaEventPicker.svelte';
   import { page } from '$app/stores';
@@ -173,23 +171,6 @@
   let users = [];
   let missedMatches = [];
   let matchReports = [];
-  let smartFuelModel = {
-    enabled: false,
-    match_count: 0,
-    residual_rmse: 0,
-    residual_mae: 0,
-    warning: '',
-    by_scout: []
-  };
-  let quickScoutModel = {
-    alliance_count: 0,
-    coefficients: null,
-    residual_rmse: 0,
-    residual_mae: 0,
-    warning: '',
-    by_team: []
-  };
-  let savingSmartFuel = false;
   let userSearch = '';
   let roleFilter = 'all';
   let editingId = null;
@@ -478,8 +459,6 @@
       loadStartPhotos().catch((error) => (photoStatus = error.message));
       missedMatches = data.data?.missed_matches || [];
       matchReports = data.data?.match_reports || [];
-      smartFuelModel = data.data?.smart_fuel_model || smartFuelModel;
-      quickScoutModel = data.data?.quick_scout_model || quickScoutModel;
       googleSheetId = data.data?.google_sheet_id || '';
       googleSheetIdInput = googleSheetId;
       googleSheetLastSyncedAt = data.data?.google_sheet_last_synced_at || null;
@@ -688,36 +667,6 @@
       await loadActiveLink(eventKey);
     } finally {
       savingLink = false;
-    }
-  }
-
-  async function setSmartFuelAlgorithmEnabled(enabled) {
-    savingSmartFuel = true;
-    errorMsg = '';
-    successMsg = '';
-    try {
-      const res = await authFetch('/api/scouting-admin', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update-smart-fuel-algorithm',
-          enabled
-        })
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Failed to save smart algorithm setting (${res.status})`);
-      }
-      smartFuelModel = {
-        ...smartFuelModel,
-        enabled: !!data.data?.smart_fuel_algorithm_enabled
-      };
-      successMsg = `Smart fuel calibration ${enabled ? 'enabled' : 'disabled'}.`;
-      await loadDashboard({ silent: true });
-    } catch (e) {
-      errorMsg = e.message || 'Failed to update smart fuel calibration.';
-    } finally {
-      savingSmartFuel = false;
     }
   }
 
@@ -1522,16 +1471,6 @@
           >
         </section>
       </div>
-    {:else if section === 'extra'}
-      <p class="sp-lede">Tools that are rarely needed. Nothing here is required to run an event.</p>
-      <AdminModelsPanel
-        {smartFuelModel}
-        {quickScoutModel}
-        saving={savingSmartFuel}
-        onToggleSmartFuel={() => setSmartFuelAlgorithmEnabled(!smartFuelModel.enabled)}
-      />
-    {:else if section === 'add'}
-      <AdminAddUser />
     {:else if section === 'team'}
       <TeamSettingsPanel />
     {:else}

@@ -18,7 +18,6 @@ import { normalizeTeamKey } from '$lib/server/scouting/matchScoutingSchema.js';
 import { syncScoutingDataToSheet } from '$lib/server/integrations/google_sheets_sync.js';
 import { tbaEventName } from '$lib/server/integrations/tba.js';
 import { teamKeySort } from '$lib/server/scouting/admin/coverage.js';
-import { toEmail } from '$lib/app/loginEmail.js';
 // already passed the Scouting Admin check, and returns the JSON response.
 
 /** The teams a person can compete for: the ones in Team settings, plus Mentor. */
@@ -129,52 +128,6 @@ export const ADMIN_ACTIONS = {
   'sync-scouting-sheet': async () => {
     const result = await syncScoutingDataToSheet();
     return json({ success: result.ok, data: result });
-  },
-  'create-user': async ({ db, body }) => {
-    // Create a login by hand (Add user tab). getSupabase() holds the service_role key, so auth.admin.createUser
-    // is allowed here. The handle_new_user trigger makes a pending profile; an account an admin creates is
-    // approved straight away.
-    const identifier = String(body?.username || '').trim();
-    const password = String(body?.password ?? '');
-    const fullName = String(body?.full_name || '').trim();
-    const frcTeam = String(body?.frc_team || '').trim();
-    if (!identifier) return json({ error: 'A username or email is required' }, { status: 400 });
-    if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, { status: 400 });
-
-    const email = toEmail(identifier);
-    const userMetadata = { name: fullName || email };
-    if (frcTeam && !(await competitionTeams()).includes(frcTeam))
-      return json({ error: 'Pick a team from Team settings, or Mentor.' }, { status: 400 });
-
-    const { data, error } = await db.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: userMetadata
-    });
-
-    if (error) {
-      const message = /already|registered|duplicate|exists/i.test(error.message || '')
-        ? 'An account with that username or email already exists.'
-        : error.message || 'Could not create the account.';
-      return json({ error: message }, { status: 400 });
-    }
-
-    const userId = data?.user?.id || null;
-    if (userId) {
-      const { error: approveError } = await db
-        .from('user_profiles')
-        .update({
-          full_name: fullName || email,
-          frc_team: frcTeam || null,
-          general_role: 'member',
-          permissions: ['CAN_SEE_ROUTES'],
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-      if (approveError) return json({ error: `Created, but not approved: ${approveError.message}` }, { status: 500 });
-    }
-    return json({ success: true, data: { id: userId, email } });
   },
   'add-manual-team': async ({ db, body, actorId }) => {
     const teamKey = normalizeTeamKey(body?.team_key);

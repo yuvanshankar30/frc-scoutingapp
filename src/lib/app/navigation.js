@@ -47,25 +47,11 @@ export const SCOUTING_ADMIN_PAGES = [
     blurb: 'Team, colors, logo and pages'
   },
   {
-    key: 'scouting-admin-add',
-    label: 'Add user',
-    href: '/scouting-admin/add',
-    icon: 'UserPlus',
-    blurb: 'Create a login by hand'
-  },
-  {
     key: 'scouting-admin-data',
     label: 'Data',
     href: '/scouting-admin/data',
     icon: 'Database',
     blurb: 'Export and reset'
-  },
-  {
-    key: 'scouting-admin-extra',
-    label: 'Extra',
-    href: '/scouting-admin/extra',
-    icon: 'Wrench',
-    blurb: 'Rarely used tools'
   }
 ];
 

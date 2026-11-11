@@ -89,8 +89,8 @@ API routes don't build their own clients or checks. Use these instead of copying
 
 People sign in at `/login` with an email (or a bare username, see [sign-in](../app/sign-in.md)) and password, checked
 by Supabase Auth. A trigger on `auth.users` (`handle_new_user`) gives every new account a `user_profiles` row that is
-**pending**: no role, no permissions. Accounts come from self sign-up (when Team settings allow it), from Scouting Admin
-> Add user (approved at once), or from `npm run admin -- create-admin` (the first admin, made with the service key).
+**pending**: no role, no permissions. Accounts come from self sign-up (when Team settings allow it) or from
+`npm run admin -- create-admin` (an admin, made with the service key).
 
 ## Access model
 

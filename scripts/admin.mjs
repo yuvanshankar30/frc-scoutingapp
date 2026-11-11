@@ -5,7 +5,7 @@
 //   npm run admin -- create-admin --email you@example.com --password '...' [--name "Your Name"]
 //   npm run admin -- set-team --number 1234 --name "Robo Raptors" [--app-name "..."] [--short-name "..."]
 //                             [--color "#dc2626"] [--theme dark|light] [--timezone America/Chicago]
-//                             [--other-teams "5678,9012"] [--sign-up on|off] [--hide "assistant,predictions"]
+//                             [--other-teams "5678,9012"] [--sign-up on|off] [--hide "assistant,epa"]
 //   npm run admin -- show
 //   npm run admin -- approve --email someone@example.com
 //

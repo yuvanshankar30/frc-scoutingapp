@@ -3010,3 +3010,187 @@ label:has(> .select),
     flex-wrap: wrap;
   }
 }
+
+/* ========================================================================
+   INK AND CREAM
+   Warm ink and cream surfaces, a deeper gold, Space Grotesk with Instrument
+   Serif accents, softer corners, pill buttons and chips, and page headers
+   that sit on the page. Applies to the Modern Light and Modern Dark themes
+   and the theme gallery; the team's brand color still sets the accent.
+   ======================================================================== */
+
+:root {
+  /* Ink and cream: the two colours the Modern themes are built from, plus
+     the gold that reads on ink. Defined for every theme. */
+  --ink: #0d0b09;
+  --ink-2: #16120e;
+  --ink-3: #1e1913;
+  --cream: #f4ede2;
+  --cream-55: rgba(244, 237, 226, 0.55);
+  --cream-22: rgba(244, 237, 226, 0.22);
+  --cream-08: rgba(244, 237, 226, 0.08);
+  --gold-on-ink: #d4a24c;
+  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+}
+
+:root[data-theme='modern'],
+:root[data-theme='modern-dark'] {
+  /* Cream paper and warm ink: the light half of the ink/cream pair above. */
+  --color-white: #fbf7f0;
+  --color-black: #0d0b09;
+  --neutral-100: #f4ede2;
+  --neutral-300: #ddd3c3;
+  --neutral-500: #6f675b;
+  --neutral-800: #1c1813;
+  --background: #f4ede2;
+
+  /* Refined, deeper gold */
+  --brand-gold-soft: #f8ecca;
+  --brand-gold-base: #d9a413;
+  --brand-gold-strong: #7d5600;
+
+  --shadow-lg: 0 8px 24px rgba(22, 19, 12, 0.16);
+  --btn-focus-ring: rgba(217, 164, 19, 0.32);
+}
+
+:root[data-theme='modern'] {
+  --text-strong: var(--color-black);
+}
+
+/* ========================================================================
+   THE LOOK, FOR EVERY THEME BUT LEGACY
+   Shapes, type and a few surfaces shared by Modern Light, Modern Dark and
+   every gallery theme (data-theme="theme-..."); each theme still brings its
+   own colours. Legacy (data-theme="light") stays the original design.
+   ======================================================================== */
+:root[data-theme]:not([data-theme='light']) {
+  /* Space Grotesk carries body text too, with Instrument Serif italic as
+     its one contrast partner (a word or two in a heading, never a body
+     run): see .serif-accent below. */
+  --font-body: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+
+  /* Softer corners: rounded cards and inputs, pill buttons. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --btn-radius-default: var(--radius-full);
+  --btn-font-weight: 500;
+  --modal-radius: 18px;
+  --toast-radius: 12px;
+}
+:root[data-theme^='theme-'] {
+  --text-strong: var(--special-text);
+}
+
+:root[data-theme]:not([data-theme='light']) body {
+  font-family: var(--font-body);
+  /* One soft glow of the theme's accent in the top-right corner, fixed to
+     the window. */
+  background-image: radial-gradient(
+    1100px 620px at 88% -8%,
+    color-mix(in srgb, var(--accent) 9%, transparent),
+    transparent 70%
+  );
+  background-attachment: fixed;
+}
+
+/* Chips and badges are pills. */
+:root[data-theme]:not([data-theme='light']) :is(.status-badge, .badge, .chip, .tag, .pill) {
+  border-radius: var(--radius-full);
+}
+
+/* Page headers sit on the page: no box, a large light-weight title. */
+:root[data-theme]:not([data-theme='light']) .page-header {
+  background: transparent;
+  border: 0;
+  padding: var(--space-4) var(--space-1) var(--space-3);
+}
+:root[data-theme]:not([data-theme='light']) .page-header h1 {
+  font-size: clamp(1.75rem, 2.8vw, 2.4rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--text-strong, var(--secondary));
+}
+
+/* A word set in Instrument Serif italic inside a Space Grotesk heading or
+   the brand name (the app name in the top bar). */
+.serif-accent {
+  font-family: var(--font-serif, Georgia, serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+:root[data-theme='modern-dark'] {
+  color-scheme: dark;
+  /* Warm ink surfaces with cream text (the same --ink/--cream pair). Body text is cream dimmed to ~80% so it never
+     becomes the loudest thing on the page (earlier passes at a bright
+     near-white were too popping); headings use full cream. */
+  --color-white: #16120e;
+  --color-black: #d9d1c4;
+  --neutral-100: #1e1913;
+  --neutral-300: #2e271f;
+  --neutral-500: #8f8677;
+  --neutral-800: #d9d1c4;
+
+  --primary: #16120e;
+  --secondary: #d9d1c4;
+  --background: #0d0b09;
+  --card: #16120e;
+  --surface-1: #16120e;
+  --surface-2: #1e1913;
+  --surface-3: #272019;
+  --text: #d9d1c4;
+  --text-strong: #f4ede2;
+  --text-secondary: #8f8677;
+  --text-muted: #8f8677;
+  --muted: #8f8677;
+  --muted-bg: #1e1913;
+  --border: #2e271f;
+  --divider: #2e271f;
+  --on-primary: #0d0b09;
+
+  /* Gold on ink: warmer and a little brighter than the old brass
+     so it reads as the one accent against the warm surfaces, still well
+     short of the saturated legacy yellow. */
+  --brand-gold-base: #d4a24c;
+  --brand-gold-strong: #e3bd75;
+  --brand-gold-soft: rgba(212, 162, 76, 0.14);
+  --btn-focus-ring: rgba(212, 162, 76, 0.32);
+  --blue-soft: rgba(96, 165, 250, 0.16);
+  --green-soft: rgba(74, 222, 128, 0.16);
+  --red-soft: rgba(248, 113, 113, 0.16);
+  --purple-soft: rgba(192, 132, 252, 0.18);
+  --orange-soft: rgba(251, 146, 60, 0.14);
+
+  /* Base/strong hues brighten on dark so chip text and borders stay readable */
+  --blue-base: #60a5fa;
+  --blue-strong: #93c5fd;
+  --green-base: #4ade80;
+  --green-strong: #86efac;
+  --red-base: #f87171;
+  --red-strong: #fca5a5;
+  --purple-base: #c084fc;
+  --purple-strong: #d8b4fe;
+  --orange-strong: #fdba74;
+
+  /* The base definitions are built from themed scales, so they already
+     follow modern-dark - no separate hardcoded set needed here. */
+
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
+
+  /* Dark text on gold-filled controls (light text would wash out) */
+  --btn-color-default: var(--on-primary);
+  --btn-hover-color-default: var(--on-primary);
+
+  --modal-overlay: rgba(0, 0, 0, 0.7);
+}
+
+:root[data-theme='modern-dark'] h1,
+:root[data-theme='modern-dark'] h2,
+:root[data-theme='modern-dark'] h3 {
+  color: var(--text-strong);
+}

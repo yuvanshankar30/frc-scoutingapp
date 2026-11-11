@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import AdminModelsPanel from './AdminModelsPanel.svelte';
 import PitProblemsView from './PitProblemsView.svelte';
 
 describe('PitProblemsView', () => {
@@ -34,30 +33,5 @@ describe('PitProblemsView', () => {
     const { body } = render(PitProblemsView, { props: { problems: [], readOnly: true } });
     expect(body).toContain('No pit problems reported for this event.');
     expect(body).toContain('Switch to the current event before adding a problem.');
-  });
-});
-
-describe('AdminModelsPanel', () => {
-  it('shows the fuel calibration and Quick Scout attribution tables', () => {
-    const { body } = render(AdminModelsPanel, {
-      props: {
-        smartFuelModel: {
-          enabled: true,
-          match_count: 12,
-          by_scout: [{ scout_name: 'Riley', adjustment_factor: 1.1, sample_matches: 4 }]
-        },
-        quickScoutModel: {
-          alliance_count: 3,
-          by_team: [
-            { team_key: 'frc5940', avg_percent_of_alliance_score: 40, avg_contribution_points: 30, matches_scored: 3 }
-          ],
-          coefficients: null
-        }
-      }
-    });
-    expect(body).toContain('Disable Algorithm');
-    expect(body).toContain('Riley');
-    expect(body).toContain('Quick Scouting Alliance Attribution');
-    expect(body).toContain('>5940<');
   });
 });

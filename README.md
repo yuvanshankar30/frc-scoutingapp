@@ -103,8 +103,8 @@ Open http://localhost:5173 and sign in with the admin account.
 
 - **People sign up** on the sign-in page ("Create an account"). New accounts can see nothing until an admin approves
   them in **Scouting Admin > People**. You can turn self sign-up off in Team settings.
-- **Or add accounts yourself** in **Scouting Admin > Add user**, for example shared logins for scouting tablets. A bare
-  username like `pit1` becomes `pit1@scouting.local` (no email is sent). Accounts made here are approved at once.
+- **Shared logins** for scouting tablets: sign up with a bare username like `pit1` (it becomes
+  `pit1@scouting.local`, no email is sent), then approve it in Scouting Admin > People.
 - Give people **competition roles** (Scouting Lead, Drive Team, Pit Crew, scout roles and so on) in Scouting Admin >
   People. The Competition Lead and the lead roles get Scouting Admin.
 
