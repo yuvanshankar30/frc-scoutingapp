@@ -63,6 +63,13 @@ describe('navigation', () => {
     expect(activeItem('/nowhere')).toBeNull();
   });
 
+  it('puts Data Viewer in Analyze for everyone, right after Strategy Board', () => {
+    const analyze = visibleGroups(false)
+      .find((group) => group.key === 'analyze')
+      .items.map((item) => item.key);
+    expect(analyze.indexOf('dataviewer')).toBe(analyze.indexOf('strategy') + 1);
+  });
+
   it('groups items under a label', () => {
     expect(NAV_GROUPS.every((group) => group.label && group.items.length > 0)).toBe(true);
   });

@@ -11,7 +11,10 @@ import {
   reliabilityTimeline,
   sortGridRows,
   teamAverages,
-  teamGridRows
+  teamGridRows,
+  ownMatchSeries,
+  teamMetricStats,
+  teamTrend
 } from './teamCharts.js';
 
 // form_version 2 is the current form, where data reports leave the robot-condition questions to Robot scouting.
@@ -214,5 +217,53 @@ describe('team grid', () => {
     expect(sortGridRows(rows, 'coverage')[0].number).toBe(1);
     expect(filterGridRows(rows, '59').map((row) => row.number)).toEqual([5940]);
     expect(filterGridRows(rows, 'cheesy').map((row) => row.number)).toEqual([254]);
+  });
+});
+
+describe('teamMetricStats', () => {
+  it('gives each team the same mean as teamAverages plus n, the number of distinct scouted matches', () => {
+    const stats = teamMetricStats(entries, 'ballsScored');
+    expect(stats.get('frc5940')).toEqual({ mean: teamAverages(entries, 'ballsScored').get('frc5940'), n: 2 });
+  });
+
+  it('leaves out teams with no value for the metric and returns an empty Map for no input', () => {
+    const stats = teamMetricStats([report('frc1', 'qm1', { report_kind: 'performance' })], 'ballsScored');
+    expect(stats.has('frc1')).toBe(false);
+    expect(teamMetricStats([], 'ballsScored').size).toBe(0);
+  });
+});
+
+describe('teamTrend', () => {
+  const series = (team, values) =>
+    values.map((value, i) => report(team, `qm${values.length - i}`, { balls_scored_average: value }));
+
+  it('compares the mean of the last k matches with the first k, in match order not input order', () => {
+    // Input is written newest-first: qm6=60 ... qm1=10, so played order is 10,20,30,40,50,60.
+    const trend = teamTrend(series('frc1', [60, 50, 40, 30, 20, 10]), 'ballsScored', 3);
+    expect(trend.get('frc1')).toEqual({ early: 20, late: 50, delta: 30, n: 6 });
+  });
+
+  it('gives a negative delta for a declining team', () => {
+    const trend = teamTrend(series('frc2', [10, 20, 30, 40, 50, 60]), 'ballsScored', 3);
+    expect(trend.get('frc2').delta).toBe(-30);
+  });
+
+  it('returns null for a team with fewer than 2k scouted matches', () => {
+    const trend = teamTrend(series('frc3', [10, 20, 30, 40, 50]), 'ballsScored', 3);
+    expect(trend.get('frc3')).toBeNull();
+  });
+});
+
+describe('ownMatchSeries', () => {
+  it("numbers a team's scouted matches 1, 2, 3 in played order so teams with different schedules share an x axis", () => {
+    const rows = [
+      report('frc1', 'qm9', { balls_scored_average: 9 }),
+      report('frc1', 'qm2', { balls_scored_average: 2 }),
+      report('frc1', 'qm2', { balls_scored_average: 4 })
+    ];
+    expect(ownMatchSeries(rows, 'ballsScored')).toEqual([
+      { matchKey: 'qm1', label: '1', value: 3, sourceMatch: '2026cabl_qm2' },
+      { matchKey: 'qm2', label: '2', value: 9, sourceMatch: '2026cabl_qm9' }
+    ]);
   });
 });

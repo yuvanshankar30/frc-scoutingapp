@@ -10,7 +10,8 @@ import { compareMatchKeys, shortMatchLabel } from '$lib/matches/matchKeys.js';
 import { mean } from '$lib/stats.js';
 
 const teamNumber = (key) => String(key || '').replace(/^frc/i, '');
-const teamKeyOf = (key) => {
+/** One spelling for a team key everywhere ('FRC05940' and 'frc5940' are both 'frc5940'). */
+export const teamKeyOf = (key) => {
   const digits = teamNumber(key).replace(/\D/g, '');
   return digits ? `frc${Number(digits)}` : '';
 };
@@ -144,6 +145,71 @@ export function teamAverages(allEntries, metric) {
     byTeam.get(key).push(value);
   }
   return new Map([...byTeam].map(([key, values]) => [key, mean(values)]));
+}
+
+function rowsByTeam(allEntries, metric) {
+  const byTeam = new Map();
+  for (const row of rowsFor(allEntries, metric)) {
+    const key = teamKeyOf(row?.team_key);
+    if (!key) continue;
+    if (!byTeam.has(key)) byTeam.set(key, []);
+    byTeam.get(key).push(row);
+  }
+  return byTeam;
+}
+
+/**
+ * Each team's average for a metric plus n, the number of distinct matches with a value: team key -> { mean, n }.
+ * The mean is the same as teamAverages (every report counts), so Rankings and Team View agree.
+ */
+export function teamMetricStats(allEntries, metric) {
+  const averages = teamAverages(allEntries, metric);
+  const result = new Map();
+  for (const [key, rows] of rowsByTeam(allEntries, metric)) {
+    if (!averages.has(key)) continue;
+    result.set(key, { mean: averages.get(key), n: perMatchSeries(rows, metric).filter((m) => m.value != null).length });
+  }
+  return result;
+}
+
+/**
+ * Whether each team is getting better: the mean of its last k scouted matches minus the mean of its first k, in
+ * played order (team key -> { early, late, delta, n }). Null for a team with fewer than 2k matches, so early and
+ * late never share a match.
+ */
+export function teamTrend(allEntries, metric, k = 3) {
+  const result = new Map();
+  for (const [key, rows] of rowsByTeam(allEntries, metric)) {
+    const values = perMatchSeries(rows, metric)
+      .map((m) => m.value)
+      .filter((value) => value != null);
+    if (!values.length) continue;
+    if (values.length < 2 * k) {
+      result.set(key, null);
+      continue;
+    }
+    const early = mean(values.slice(0, k));
+    const late = mean(values.slice(-k));
+    // Floating-point noise (0.3+0.2+0.1 vs 0.1+0.2+0.3) is no change, not a tiny improvement.
+    const delta = Math.abs(late - early) < 1e-9 ? 0 : late - early;
+    result.set(key, { early, late, delta, n: values.length });
+  }
+  return result;
+}
+
+/**
+ * A team's per-match series keyed by its own match number (1, 2, 3 ... in played order), so several teams with
+ * different schedules can share one LineChart x axis without gaps. `sourceMatch` keeps the real match key.
+ */
+export function ownMatchSeries(rows, metric) {
+  return perMatchSeries(rows, metric)
+    .filter((point) => point.value != null)
+    .map((point, i) => ({
+      matchKey: `qm${i + 1}`,
+      label: String(i + 1),
+      value: point.value,
+      sourceMatch: point.matchKey
+    }));
 }
 
 /** Five-number summary for a box plot, or null with no values. */

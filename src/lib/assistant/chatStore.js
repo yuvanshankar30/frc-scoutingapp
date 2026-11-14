@@ -83,7 +83,11 @@ const clean = (messages) =>
       content: m.content,
       ...(m.tools?.length ? { tools: m.tools.map((t) => ({ name: t.name })) } : {}),
       ...(m.files?.length ? { files: m.files.map(cleanFile) } : {}),
-      ...(m.proposals?.length ? { proposals: m.proposals.map(cleanProposal) } : {})
+      ...(m.proposals?.length ? { proposals: m.proposals.map(cleanProposal) } : {}),
+      // The Data Viewer's analysis agent lists where each answer came from.
+      ...(m.sources?.length
+        ? { sources: m.sources.map((s) => ({ source: String(s.source), ...(s.ok === false ? { ok: false } : {}) })) }
+        : {})
     }));
 
 /** Chats newest first, without their messages: { id, title, updatedAt, count }. */

@@ -8,7 +8,7 @@ a shared picklist for alliance selection.
 
 - **Scout:** match scouting (data, performance and robot), pit scouting with photos, notes, and each scout's own
   assignments. Reports wait on the phone until it is back online.
-- **Analyze:** Team View, Strategy Board, Match View, power and match rankings, EPA ratings, and an optional AI
+- **Analyze:** Team View, Strategy Board, a Data Viewer of every scouting answer, Match View, power and match rankings, EPA ratings, and an optional AI
   assistant.
 - **On the field:** the drive team's schedule, a shared picklist, and Blue Alliance lookups.
 - **Run the event:** event setup, match and shift assignments, a visual scouting form editor, roles and permissions, an

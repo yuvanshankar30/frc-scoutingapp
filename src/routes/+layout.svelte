@@ -32,6 +32,7 @@
   } from '$lib/app/navigation.js';
   import {
     ArrowUpDown,
+    ChartColumnBig,
     CalendarClock,
     CalendarDays,
     ChevronDown,
@@ -68,6 +69,7 @@
 
   const ICONS = {
     ArrowUpDown,
+    ChartColumnBig,
     CalendarClock,
     CalendarDays,
     ClipboardCheck,
