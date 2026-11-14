@@ -90,6 +90,13 @@ export const NAV_GROUPS = [
       },
       { key: 'strategy', label: 'Strategy Board', href: '/strategy', icon: 'Target', blurb: 'Every team, one board' },
       {
+        key: 'dataviewer',
+        label: 'Data Viewer',
+        href: '/dataviewer',
+        icon: 'ChartColumnBig',
+        blurb: 'Every scouting answer, charted'
+      },
+      {
         key: 'matchview',
         label: 'Match View',
         href: '/matchview',

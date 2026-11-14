@@ -10,7 +10,7 @@ New here? Start with the [README](../README.md) (setup and deployment), then
 | --- | --- |
 | [app/](app/README.md) | The shell around every page: Home, sign-in, Account, access, navigation, look, site controls, phone layout |
 | [scouting/](scouting/README.md) | The **Scout** menu: Match Scouting, Pit Scouting, My Reports, assignment cards, Quick Scout, offline |
-| [analysis/](analysis/README.md) | The **Analyze** menu: Team View, Strategy Board, Match View, rankings, EPA, AI analytics |
+| [analysis/](analysis/README.md) | The **Analyze** menu: Team View, Strategy Board, Data Viewer, Match View, rankings, EPA, AI analytics |
 | [on-the-field/](on-the-field/README.md) | The **On the field** menu: Drive Team, Picklist, Blue Alliance |
 | [scouting-admin/](scouting-admin/README.md) | Every **Scouting Admin** tab, including Team settings |
 | [architecture/](architecture/README.md) | How it fits together: system overview, database, deployment |
