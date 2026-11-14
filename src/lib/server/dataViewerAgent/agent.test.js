@@ -49,8 +49,12 @@ const jsonResponse = (body, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
   headers: new Headers(),
-  text: async () => JSON.stringify(body)
+  text: async () => JSON.stringify(body),
+  json: async () => body
 });
+// The frc-data Edge Function's answer for a path.
+const functionAnswer = (source, url, data) => jsonResponse({ source, url, data });
+const FUNCTION_ENV = { SUPABASE_URL: 'https://project.supabase.co', SUPABASE_SERVICE_KEY: 'service-key' };
 
 describe('switched off', () => {
   it('ships with the agent off', () => {
@@ -133,38 +137,45 @@ describe('outside sources', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('reads Match13 with its bearer key, and only its documented API roots', async () => {
+  it('reads Match13 and FIRST through the frc-data Edge Function, never with keys of its own', async () => {
     expect(pathProblem('match13', '/teams/5940/years/2026')).toBe(null);
     expect(pathProblem('match13', '/events/2026cc/sim')).toBe(null);
     expect(pathProblem('match13', '/account/keys')).not.toBe(null);
-    const fetchImpl = vi.fn(async () => jsonResponse({ xp: 42 }));
-    const result = await fetchSource('match13', '/teams/5940/years/2026', {
-      env: { MATCH13_API_KEY: 'm13' },
-      fetchImpl
+    const fetchImpl = vi.fn(async () =>
+      functionAnswer('match13', 'https://actions.match13.com/v1/teams/5940/years/2026', { xp: 42 })
+    );
+    const result = await fetchSource('match13', '/teams/5940/years/2026', { env: FUNCTION_ENV, fetchImpl });
+    expect(result).toMatchObject({ url: 'https://actions.match13.com/v1/teams/5940/years/2026', data: { xp: 42 } });
+    const [url, options] = fetchImpl.mock.calls[0];
+    expect(url).toBe('https://project.supabase.co/functions/v1/frc-data');
+    expect(options.method).toBe('POST');
+    expect(options.headers.Authorization).toBe('Bearer service-key');
+    expect(JSON.parse(options.body)).toEqual({ source: 'match13', path: '/teams/5940/years/2026' });
+    // Keys for FIRST or Match13 in this app's environment are never used.
+    expect(sourceStatus({ MATCH13_API_KEY: 'k', FRC_API_USERNAME: 'u', FRC_API_TOKEN: 't' })).toMatchObject({
+      first: { configured: false },
+      match13: { configured: false }
     });
-    expect(result.url).toBe('https://actions.match13.com/v1/teams/5940/years/2026');
-    expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBe('Bearer m13');
+    expect(sourceStatus(FUNCTION_ENV)).toMatchObject({ first: { configured: true }, match13: { configured: true } });
+  });
+
+  it("passes on the function's error, such as a missing secret", async () => {
+    const fetchImpl = async () =>
+      jsonResponse({ source: 'first', error: 'FIRST FRC Events is not set up (its secret is missing).' }, 503);
+    const result = await fetchSource('first', '/2026/rankings/CC', { env: FUNCTION_ENV, fetchImpl });
+    expect(result.error).toMatch(/secret is missing/);
   });
 
   it('keeps under each service limit, so the shared Match13 account is never exhausted', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({}));
-    const env = { MATCH13_API_KEY: 'm13' };
+    const fetchImpl = vi.fn(async () => functionAnswer('match13', 'https://actions.match13.com/v1/x', {}));
     const answers = [];
     for (let i = 0; i < 21; i += 1)
-      answers.push(await fetchSource('match13', `/teams/${i + 1}/years/2026`, { env, fetchImpl, now: 1000 }));
+      answers.push(
+        await fetchSource('match13', `/teams/${i + 1}/years/2026`, { env: FUNCTION_ENV, fetchImpl, now: 1000 })
+      );
     expect(answers.slice(0, 20).every((answer) => !answer.error)).toBe(true);
     expect(answers[20].error).toMatch(/busy/);
     expect(fetchImpl).toHaveBeenCalledTimes(20);
-  });
-
-  it("signs FIRST requests with the account's basic auth", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ Rankings: [] }));
-    await fetchSource('first', '/2026/rankings/CC', {
-      env: { FRC_API_USERNAME: 'user', FRC_API_TOKEN: 'token' },
-      fetchImpl
-    });
-    expect(fetchImpl.mock.calls[0][0]).toBe('https://frc-api.firstinspires.org/v3.0/2026/rankings/CC');
-    expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBe(`Basic ${btoa('user:token')}`);
   });
 
   it('says why a source failed instead of throwing', async () => {

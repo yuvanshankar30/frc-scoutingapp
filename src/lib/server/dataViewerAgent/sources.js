@@ -1,13 +1,16 @@
 // Outside FRC data the analysis agent may read: The Blue Alliance, FIRST's official FRC Events API, Match13 and
-// Statbotics.
-// The model only ever names a source and a path; the server builds the URL from a fixed base, so it can't be pointed
-// at any other host. Each source has a path allowlist, a timeout, a response size cap, a short in-memory cache and a
-// per-minute ceiling under the service's own limit. A failure never throws: the model gets { error } and can say the
-// source was unavailable.
+// Statbotics. The model only ever names a source and a path; the server builds the request from a fixed base, so it
+// can't be pointed at any other host. Each source has a path allowlist, a timeout, a response size cap, a short
+// in-memory cache and a per-minute ceiling under the service's own limit. A failure never throws: the model gets
+// { error } and can say the source was unavailable.
+//
+// FIRST and Match13 credentials are NOT in this app: they are secrets of the Supabase Edge Function frc-data
+// (supabase/functions/frc-data), which this server calls with the project's service-role key. TBA (TBA_API_KEY, which
+// the app already uses everywhere) and Statbotics (no key) are called directly.
 import { TBA_API_BASE } from '$lib/server/integrations/tba.js';
 
 const MINUTE = 60_000;
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 12_000;
 const MAX_BODY_BYTES = 2_000_000;
 const CACHE_LIMIT = 300;
 // Path pieces: letters, digits, _ and - only, so no "..", "//", "@", "%" or scheme can sneak in.
@@ -15,7 +18,10 @@ const SEGMENT = '[A-Za-z0-9_-]+';
 const QUERY = '(\\?[A-Za-z0-9_=&.,-]{1,200})?';
 
 const tbaKey = (env) => env.TBA_API_KEY || env.VITE_TBA_API_KEY || env.PUBLIC_TBA_API_KEY || '';
-const basic = (user, token) => `Basic ${btoa(`${user}:${token}`)}`;
+const supabaseUrl = (env) => String(env.SUPABASE_URL || env.PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
+const serviceKey = (env) => String(env.SUPABASE_SERVICE_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '');
+/** The frc-data Edge Function can be called when the server knows the project and its service-role key. */
+const functionReachable = (env) => Boolean(supabaseUrl(env) && serviceKey(env));
 
 export const SOURCES = Object.freeze({
   tba: {
@@ -31,7 +37,7 @@ export const SOURCES = Object.freeze({
   },
   first: {
     label: 'FIRST FRC Events',
-    base: 'https://frc-api.firstinspires.org/v3.0',
+    viaFunction: true,
     // FIRST asks that "significant volume" be cleared with them first, so we stay modest.
     perMinute: 60,
     // /2026/events?eventCode=CC, /2026/matches/CC?tournamentLevel=Qualification, /2026/rankings/CC, /2026/scores/CC/Playoff
@@ -41,21 +47,19 @@ export const SOURCES = Object.freeze({
       )
     ],
     ttlMs: MINUTE,
-    configured: (env) => Boolean(env.FRC_API_USERNAME && env.FRC_API_TOKEN),
-    headers: (env) => ({ Authorization: basic(env.FRC_API_USERNAME, env.FRC_API_TOKEN) }),
+    configured: functionReachable,
     help: 'FRC Events API v3.0 path starting with the season, e.g. /2026/rankings/CC, /2026/matches/CC?tournamentLevel=Qualification, /2026/scores/CC/Qualification, /2026/alliances/CC'
   },
   match13: {
     label: 'Match13',
-    base: 'https://actions.match13.com/v1',
+    viaFunction: true,
     // Match13 allows 60 a minute, 1000 an hour and 30000 a week for the whole account (every key together), so the
-    // agent keeps well under it.
+    // agent keeps well under it; the frc-data function has its own ceiling on top.
     perMinute: 20,
     // /years, /years/2026/teams, /teams/5940/years/2026, /events/2026cc, /events/2026cc/sim, /matches/2026cc_qm12
     paths: [new RegExp(`^/(years|teams|events|matches)(/${SEGMENT}){0,4}${QUERY}$`)],
     ttlMs: 5 * MINUTE,
-    configured: (env) => Boolean(env.MATCH13_API_KEY),
-    headers: (env) => ({ Authorization: `Bearer ${env.MATCH13_API_KEY}` }),
+    configured: functionReachable,
     help: 'Match13 read API v1 path, e.g. /years/2026/teams, /teams/5940/years/2026 (xP rating), /events/2026cc, /events/2026cc/sim (forecasts)'
   },
   statbotics: {
@@ -113,20 +117,32 @@ function withinLimit(sourceKey, now) {
   return true;
 }
 
-/**
- * GET one path from a source: { source, url, data } or { source, error }. Answers are cached briefly per URL, so a
- * model that asks twice in one conversation (or two people asking at once) costs one request.
- */
-export async function fetchSource(sourceKey, path, { env = {}, fetchImpl = fetch, now = Date.now() } = {}) {
-  const problem = pathProblem(sourceKey, path);
-  if (problem) return { source: sourceKey, error: problem };
+const failure = (label, error) =>
+  error?.name === 'TimeoutError' ? `${label} did not answer in time.` : `${label} could not be reached.`;
+
+/** FIRST or Match13 through the frc-data Edge Function: { url, data } or { url?, error }. */
+async function viaFunction(sourceKey, path, env, fetchImpl) {
   const source = SOURCES[sourceKey];
-  if (!source.configured(env)) return { source: sourceKey, error: `${source.label} is not set up on this server.` };
-  const url = `${source.base}${String(path).trim()}`;
-  const hit = cache.get(url);
-  if (hit && now - hit.at < source.ttlMs) return { source: sourceKey, url, data: hit.data, cached: true };
-  if (!withinLimit(sourceKey, now))
-    return { source: sourceKey, url, error: `${source.label} is busy (our own pacing); try again in a minute.` };
+  try {
+    const response = await fetchImpl(`${supabaseUrl(env)}/functions/v1/frc-data`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey(env)}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: sourceKey, path }),
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
+    });
+    const payload = await response.json().catch(() => null);
+    if (!payload) return { error: `${source.label} could not be reached (frc-data answered ${response.status}).` };
+    if (payload.error) return { url: payload.url, error: payload.error };
+    return { url: payload.url, data: payload.data };
+  } catch (error) {
+    return { error: failure(source.label, error) };
+  }
+}
+
+/** A direct GET to TBA or Statbotics: { url, data } or { url, error }. */
+async function direct(sourceKey, path, env, fetchImpl) {
+  const source = SOURCES[sourceKey];
+  const url = `${source.base}${path}`;
   try {
     const response = await fetchImpl(url, {
       headers: { Accept: 'application/json', ...source.headers(env) },
@@ -134,7 +150,6 @@ export async function fetchSource(sourceKey, path, { env = {}, fetchImpl = fetch
     });
     if (!response.ok)
       return {
-        source: sourceKey,
         url,
         error:
           response.status === 404
@@ -142,21 +157,33 @@ export async function fetchSource(sourceKey, path, { env = {}, fetchImpl = fetch
             : `${source.label} answered ${response.status}.`
       };
     const length = Number(response.headers?.get?.('content-length') || 0);
-    if (length > MAX_BODY_BYTES) return { source: sourceKey, url, error: `${source.label} sent too much data.` };
+    if (length > MAX_BODY_BYTES) return { url, error: `${source.label} sent too much data.` };
     const body = await response.text();
-    if (body.length > MAX_BODY_BYTES) return { source: sourceKey, url, error: `${source.label} sent too much data.` };
-    const data = body ? JSON.parse(body) : null;
-    cache.set(url, { at: now, data });
-    if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
-    return { source: sourceKey, url, data };
+    if (body.length > MAX_BODY_BYTES) return { url, error: `${source.label} sent too much data.` };
+    return { url, data: body ? JSON.parse(body) : null };
   } catch (error) {
-    return {
-      source: sourceKey,
-      url,
-      error:
-        error?.name === 'TimeoutError'
-          ? `${source.label} did not answer in time.`
-          : `${source.label} could not be reached.`
-    };
+    return { url, error: failure(source.label, error) };
   }
+}
+
+/**
+ * GET one path from a source: { source, url, data } or { source, error }. Answers are cached briefly per source and
+ * path, so a model that asks twice in one conversation (or two people asking at once) costs one request.
+ */
+export async function fetchSource(sourceKey, path, { env = {}, fetchImpl = fetch, now = Date.now() } = {}) {
+  const problem = pathProblem(sourceKey, path);
+  if (problem) return { source: sourceKey, error: problem };
+  const source = SOURCES[sourceKey];
+  if (!source.configured(env)) return { source: sourceKey, error: `${source.label} is not set up on this server.` };
+  const clean = String(path).trim();
+  const key = `${sourceKey}:${clean}`;
+  const hit = cache.get(key);
+  if (hit && now - hit.at < source.ttlMs) return { source: sourceKey, url: hit.url, data: hit.data, cached: true };
+  if (!withinLimit(sourceKey, now))
+    return { source: sourceKey, error: `${source.label} is busy (our own pacing); try again in a minute.` };
+  const result = await (source.viaFunction ? viaFunction : direct)(sourceKey, clean, env, fetchImpl);
+  if (result.error) return { source: sourceKey, ...(result.url ? { url: result.url } : {}), error: result.error };
+  cache.set(key, { at: now, url: result.url, data: result.data });
+  if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+  return { source: sourceKey, url: result.url, data: result.data };
 }

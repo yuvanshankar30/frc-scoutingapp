@@ -104,11 +104,23 @@ row of five on phones.
 | --- | --- | --- |
 | Our scouting | `list_fields`, `field_summary`, `team_fields`, `field_trend`, `metric_rankings`, `scout_entries` (the Data Viewer's own functions, added questions included), plus the scouting assistant's read-only tools (notes, problems, picklist, matchups, rankings, …) | the caller's own database client, so row-level security applies |
 | The Blue Alliance | `tba_get` | `TBA_API_KEY` |
-| FIRST FRC Events API | `first_get` | `FRC_API_USERNAME`, `FRC_API_TOKEN` |
-| Match13 | `match13_get` (xP ratings, `/events/<key>/sim` forecasts) | `MATCH13_API_KEY` |
+| FIRST FRC Events API | `first_get` | the `frc-data` Edge Function (its secrets `FRC_API_USERNAME`, `FRC_API_TOKEN`) |
+| Match13 | `match13_get` (xP ratings, `/events/<key>/sim` forecasts) | the `frc-data` Edge Function (its secret `MATCH13_API_KEY`) |
 | Statbotics | `statbotics_get` (EPA) | nothing |
 
-The model only names a source and a path: the server
+**FIRST and Match13 keys live only in the `frc-data` Supabase Edge Function** (`supabase/functions/frc-data`), never in
+this app's environment. The agent's server calls it with the project's service-role key (`POST /functions/v1/frc-data`
+with `{ source, path }`); the function refuses anything else (a browser, the anon key, a signed-in user's token), so
+nobody else can spend the FIRST or Match13 quota. It adds the credential, applies the same path allowlists (a test
+checks they match the agent's), a 10 s timeout, a 2 MB cap, a short cache and its own per-minute ceiling, and
+`{ action: 'status' }` says which secrets are set without showing them. Deploy it to your project and set its secrets:
+
+```sh
+supabase functions deploy frc-data --project-ref <project>
+supabase secrets set FRC_API_USERNAME=… FRC_API_TOKEN=… MATCH13_API_KEY=… --project-ref <project>
+```
+
+TBA (`TBA_API_KEY`) and Statbotics (no key) are called directly. The model only names a source and a path: the server
 builds the URL from the source's fixed base, checks the path against that source's allowlist (plain segments only, no
 `..`, `//`, `@` or other hosts), times out after 10 s, refuses answers over 2 MB, caches answers briefly and keeps each
 source under a per-minute ceiling (Match13's 60-a-minute limit is for the whole account, so the agent takes at most 20).
