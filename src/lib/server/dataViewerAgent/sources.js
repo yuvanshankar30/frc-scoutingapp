@@ -16,6 +16,8 @@ const CACHE_LIMIT = 300;
 // Path pieces: letters, digits, _ and - only, so no "..", "//", "@", "%" or scheme can sneak in.
 const SEGMENT = '[A-Za-z0-9_-]+';
 const QUERY = '(\\?[A-Za-z0-9_=&.,-]{1,200})?';
+// FIRST and Match13: every endpoint, as plain path segments and a plain query (the same rule as frc-data's).
+const ANY_ENDPOINT = /^(\/[A-Za-z0-9_.~:-]+)+\/?(\?[A-Za-z0-9_=&.,:~+-]{1,500})?$/;
 
 const tbaKey = (env) => env.TBA_API_KEY || env.VITE_TBA_API_KEY || env.PUBLIC_TBA_API_KEY || '';
 const supabaseUrl = (env) => String(env.SUPABASE_URL || env.PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
@@ -40,15 +42,11 @@ export const SOURCES = Object.freeze({
     viaFunction: true,
     // FIRST asks that "significant volume" be cleared with them first, so we stay modest.
     perMinute: 60,
-    // /2026/events?eventCode=CC, /2026/matches/CC?tournamentLevel=Qualification, /2026/rankings/CC, /2026/scores/CC/Playoff
-    paths: [
-      new RegExp(
-        `^/\\d{4}(/(events|teams|matches|schedule|scores|rankings|alliances|awards|districts|avatars)(/${SEGMENT}){0,3})?${QUERY}$`
-      )
-    ],
+    // Every FRC Events v3.0 endpoint, e.g. /2026/rankings/CC, /2026/matches/CC?tournamentLevel=Qualification
+    paths: [ANY_ENDPOINT],
     ttlMs: MINUTE,
     configured: functionReachable,
-    help: 'FRC Events API v3.0 path starting with the season, e.g. /2026/rankings/CC, /2026/matches/CC?tournamentLevel=Qualification, /2026/scores/CC/Qualification, /2026/alliances/CC'
+    help: 'Any FRC Events API v3.0 path, starting with the season, e.g. /2026/rankings/CC, /2026/matches/CC?tournamentLevel=Qualification, /2026/scores/CC/Qualification, /2026/alliances/CC'
   },
   match13: {
     label: 'Match13',
@@ -56,11 +54,11 @@ export const SOURCES = Object.freeze({
     // Match13 allows 60 a minute, 1000 an hour and 30000 a week for the whole account (every key together), so the
     // agent keeps well under it; the frc-data function has its own ceiling on top.
     perMinute: 20,
-    // /years, /years/2026/teams, /teams/5940/years/2026, /events/2026cc, /events/2026cc/sim, /matches/2026cc_qm12
-    paths: [new RegExp(`^/(years|teams|events|matches)(/${SEGMENT}){0,4}${QUERY}$`)],
+    // Every Match13 read API v1 endpoint, e.g. /years/2026/teams, /teams/5940/years/2026, /events/2026cc/sim
+    paths: [ANY_ENDPOINT],
     ttlMs: 5 * MINUTE,
     configured: functionReachable,
-    help: 'Match13 read API v1 path, e.g. /years/2026/teams, /teams/5940/years/2026 (xP rating), /events/2026cc, /events/2026cc/sim (forecasts)'
+    help: 'Any Match13 read API v1 path, e.g. /years/2026/teams, /teams/5940/years/2026 (xP rating), /events/2026cc, /events/2026cc/sim (forecasts)'
   },
   statbotics: {
     label: 'Statbotics',
@@ -95,6 +93,13 @@ export function pathProblem(sourceKey, path) {
   if (value.length > 300) return 'That path is too long.';
   if (!source.paths.some((pattern) => pattern.test(value)))
     return `That path is not one this source allows. ${source.help}.`;
+  if (
+    value
+      .split('?')[0]
+      .split('/')
+      .some((segment) => segment === '.' || segment === '..')
+  )
+    return 'A path cannot step up with "." or "..".';
   return null;
 }
 

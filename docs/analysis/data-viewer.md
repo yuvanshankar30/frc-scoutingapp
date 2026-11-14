@@ -111,8 +111,9 @@ row of five on phones.
 **FIRST and Match13 keys live only in the `frc-data` Supabase Edge Function** (`supabase/functions/frc-data`), never in
 this app's environment. The agent's server calls it with the project's service-role key (`POST /functions/v1/frc-data`
 with `{ source, path }`); the function refuses anything else (a browser, the anon key, a signed-in user's token), so
-nobody else can spend the FIRST or Match13 quota. It adds the credential, applies the same path allowlists (a test
-checks they match the agent's), a 10 s timeout, a 2 MB cap, a short cache and its own per-minute ceiling, and
+nobody else can spend the FIRST or Match13 quota. It adds the credential and reads **any endpoint** of FIRST's or Match13's API: a path is plain segments only (never
+`.`/`..`), the query plain characters only, and the built URL must stay on the service's host and base path (a test
+checks the agent applies the same rule). It also applies a 10 s timeout, a 2 MB cap, a short cache and its own per-minute ceiling, and
 `{ action: 'status' }` says which secrets are set without showing them. Deploy it to your project and set its secrets:
 
 ```sh

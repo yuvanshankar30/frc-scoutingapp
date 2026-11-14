@@ -25,6 +25,24 @@ const upstream = (body, status = 200) => new Response(JSON.stringify(body), { st
 describe('frc-data Edge Function', () => {
   beforeEach(() => resetState());
 
+  // A JWT as the gateway passes it on (its signature already checked): only the role claim matters here.
+  const jwt = (role) =>
+    `eyJhbGciOiJIUzI1NiJ9.${btoa(JSON.stringify({ role, iss: 'supabase' })).replace(/=+$/, '')}.signature`;
+
+  it('lets in a service_role JWT or one of the secret keys, and nothing else', async () => {
+    const fetchImpl = vi.fn();
+    const status = async (token, extraEnv = {}) =>
+      (await handle(post({ action: 'status' }, token), { env: { ...env, ...extraEnv }, fetchImpl })).status;
+    expect(await status(jwt('service_role'))).toBe(200);
+    expect(await status('service-key')).toBe(200);
+    expect(await status('sb_secret_abc', { SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'sb_secret_abc' }) })).toBe(
+      200
+    );
+    expect(await status(jwt('anon'))).toBe(401);
+    expect(await status(jwt('authenticated'))).toBe(401);
+    expect(await status('not.a.jwt')).toBe(401);
+  });
+
   it("refuses anyone without the project's service-role key", async () => {
     const fetchImpl = vi.fn();
     for (const token of [null, 'anon-key', 'a-signed-in-users-jwt', 'service-ke'])
@@ -56,7 +74,15 @@ describe('frc-data Edge Function', () => {
 
   it('refuses paths that could leave the service, and unknown sources', async () => {
     const fetchImpl = vi.fn();
-    for (const path of ['//evil.example', '/2026/../../x', 'https://evil.example', '/admin', '/2026/rankings/CC@x'])
+    for (const path of [
+      '//evil.example',
+      '/2026/../../x',
+      '/2026/./rankings',
+      'https://evil.example',
+      '/2026/rankings/CC@x',
+      '/%2e%2e/x',
+      '/2026/rankings/CC?next=//evil'
+    ])
       expect((await handle(post({ source: 'first', path }), { env, fetchImpl })).status, path).toBe(400);
     expect((await handle(post({ source: 'tba', path: '/event/2026cc' }), { env, fetchImpl })).status).toBe(400);
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -89,6 +115,28 @@ describe('frc-data Edge Function', () => {
     expect((await answer(401)).error).toMatch(/refused our credentials/);
     resetState();
     expect((await answer(429)).error).toMatch(/rate limiting/);
+  });
+
+  it('reads any endpoint inside the service, with its query', async () => {
+    const fetchImpl = vi.fn(async () => upstream({}));
+    for (const path of [
+      '/2026',
+      '/2026/schedule/CC/Qualification/hybrid',
+      '/2026/awards/event/CC',
+      '/2026/teams?eventCode=CC&page=2',
+      '/2026/rankings/district/CA'
+    ])
+      expect((await handle(post({ source: 'first', path }), { env, fetchImpl })).status, path).toBe(200);
+    for (const path of ['/years', '/teams/5940/years/2026', '/events/2026cc/sim', '/events/2026cc/matches?limit=5'])
+      expect((await handle(post({ source: 'match13', path }), { env, fetchImpl })).status, path).toBe(200);
+    expect(fetchImpl.mock.calls.map(([url]) => new URL(url).origin)).toEqual(
+      expect.arrayContaining(['https://frc-api.firstinspires.org', 'https://actions.match13.com'])
+    );
+    expect(
+      fetchImpl.mock.calls.every(([url]) =>
+        /^https:\/\/(frc-api\.firstinspires\.org\/v3\.0|actions\.match13\.com\/v1)\//.test(url)
+      )
+    ).toBe(true);
   });
 
   it('allows exactly the paths the agent allows', () => {

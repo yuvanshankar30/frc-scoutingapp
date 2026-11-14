@@ -119,7 +119,8 @@ describe('outside sources', () => {
       ''
     ])
       expect(pathProblem('tba', path), path).not.toBe(null);
-    expect(pathProblem('first', '/rankings/CC')).not.toBe(null);
+    expect(pathProblem('first', '/2026/../x')).not.toBe(null);
+    expect(pathProblem('first', '/2026/schedule/CC/Qualification/hybrid')).toBe(null);
     expect(pathProblem('nope', '/x')).toMatch(/Unknown source/);
   });
 
@@ -140,7 +141,7 @@ describe('outside sources', () => {
   it('reads Match13 and FIRST through the frc-data Edge Function, never with keys of its own', async () => {
     expect(pathProblem('match13', '/teams/5940/years/2026')).toBe(null);
     expect(pathProblem('match13', '/events/2026cc/sim')).toBe(null);
-    expect(pathProblem('match13', '/account/keys')).not.toBe(null);
+    expect(pathProblem('match13', '/events/../account')).not.toBe(null);
     const fetchImpl = vi.fn(async () =>
       functionAnswer('match13', 'https://actions.match13.com/v1/teams/5940/years/2026', { xp: 42 })
     );
